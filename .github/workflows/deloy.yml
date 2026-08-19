@@ -3,7 +3,7 @@ name: Deploy to GitHub Pages
 on:
   push:
     branches:
-      - master # 若主要分支名稱為 master 請改為 master
+      - aj # 若主要分支名稱為 master 請改為 master
 
 permissions:
   contents: write
