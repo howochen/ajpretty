@@ -16,12 +16,12 @@ export default function Navbar({ isAdmin, onLogout }) {
     <nav className="bg-white shadow-md sticky top-0 z-50">
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
         <div className="flex justify-between items-center h-16">
-          <Link to="/ajpretty" className="text-2xl font-bold text-primary">
+          <Link to="/" className="text-2xl font-bold text-primary">
             AJ創美學苑
           </Link>
           
           <div className="hidden md:flex space-x-8">
-            <Link to="/ajpretty" className="text-gray-700 hover:text-primary transition-colors">
+            <Link to="/" className="text-gray-700 hover:text-primary transition-colors">
               首頁
             </Link>
             <Link to="/booking" className="text-gray-700 hover:text-primary transition-colors">
