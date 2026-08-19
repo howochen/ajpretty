@@ -10,13 +10,17 @@ export default function AdminLogin({ onLogin }) {
   const [isRegistering, setIsRegistering] = useState(false)
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState('')
+  const [notice, setNotice] = useState('')
+  const [confirmationPending, setConfirmationPending] = useState(false)
   const navigate = useNavigate()
   const location = useLocation()
   const redirectTo = location.state?.from?.pathname || '/merchant'
+  const emailRedirectTo = `${window.location.origin}${import.meta.env.BASE_URL}admin/login`
 
   const handleSubmit = async (event) => {
     event.preventDefault()
     setError('')
+    setNotice('')
     setLoading(true)
 
     try {
@@ -30,7 +34,8 @@ export default function AdminLogin({ onLogin }) {
           email,
           password,
           options: {
-            data: { role: 'admin', tenant_subdomain: 'default' }
+            data: { role: 'admin', tenant_subdomain: 'default' },
+            emailRedirectTo
           }
         })
 
@@ -40,7 +45,8 @@ export default function AdminLogin({ onLogin }) {
           onLogin(data.user)
           navigate(redirectTo, { replace: true })
         } else {
-          setError('註冊成功，請先至信箱完成驗證，再回來登入。')
+          setNotice('註冊成功，請檢查信箱或垃圾郵件資料夾完成驗證。')
+          setConfirmationPending(true)
           setIsRegistering(false)
         }
         return
@@ -52,7 +58,40 @@ export default function AdminLogin({ onLogin }) {
       onLogin(data.user)
       navigate(redirectTo, { replace: true })
     } catch (authError) {
+      if (authError.message?.toLowerCase().includes('email not confirmed')) {
+        setConfirmationPending(true)
+      }
       setError(authError.message || '登入或註冊失敗，請稍後再試。')
+    } finally {
+      setLoading(false)
+    }
+  }
+
+  const handleResendConfirmation = async () => {
+    if (!email) {
+      setError('請先輸入註冊時使用的 Email。')
+      return
+    }
+
+    setError('')
+    setNotice('')
+    setLoading(true)
+
+    try {
+      const { error: resendError } = await supabase.auth.resend({
+        type: 'signup',
+        email,
+        options: { emailRedirectTo }
+      })
+
+      if (resendError) throw resendError
+      setNotice('驗證信已重新寄出，請檢查收件匣、垃圾郵件與促銷內容。')
+    } catch (authError) {
+      const message = authError.message || ''
+      const isRateLimited = message.toLowerCase().includes('rate limit') || message.toLowerCase().includes('after')
+      setError(isRateLimited
+        ? 'Supabase 暫時限制寄信頻率，請稍後再試；這不是本機網址造成的問題。'
+        : message || '重新寄送失敗，請稍後再試。')
     } finally {
       setLoading(false)
     }
@@ -79,6 +118,7 @@ export default function AdminLogin({ onLogin }) {
               onChange={(event) => {
                 setEmail(event.target.value)
                 setError('')
+                setNotice('')
               }}
               className="input-field"
               autoComplete="email"
@@ -111,6 +151,7 @@ export default function AdminLogin({ onLogin }) {
                 onChange={(event) => {
                   setPasswordConfirmation(event.target.value)
                   setError('')
+                  setNotice('')
                 }}
                 className="input-field"
                 autoComplete="new-password"
@@ -119,11 +160,29 @@ export default function AdminLogin({ onLogin }) {
               />
             </div>
           )}
+          {notice && <p role="status" className="text-sm text-green-700">{notice}</p>}
           {error && <p role="alert" className="text-sm text-red-600">{error}</p>}
           <button type="submit" disabled={loading} className="btn-primary w-full">
             {loading ? '處理中...' : isRegistering ? '註冊管理者會員' : '登入預約管理'}
           </button>
         </form>
+
+        {confirmationPending && !isRegistering && (
+          <p className="mt-4 text-sm text-gray-600 text-center">
+            尚未收到信件？確認 Email 正確後，可再次要求寄送驗證信。
+          </p>
+        )}
+
+        {confirmationPending && !isRegistering && (
+          <button
+            type="button"
+            className="w-full mt-4 text-primary hover:text-accent"
+            onClick={handleResendConfirmation}
+            disabled={loading}
+          >
+            重新寄送驗證信
+          </button>
+        )}
 
         <button
           type="button"
@@ -131,6 +190,7 @@ export default function AdminLogin({ onLogin }) {
           onClick={() => {
             setIsRegistering(!isRegistering)
             setError('')
+            setNotice('')
           }}
         >
           {isRegistering ? '已有帳號？返回登入' : '建立新的管理者會員'}
