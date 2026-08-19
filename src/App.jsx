@@ -38,7 +38,7 @@ function App() {
       <div className="min-h-screen">
         <Navbar isAdmin={isAdmin} onLogout={handleLogout} />
         <Routes>
-          <Route path="/" element={<Home />} />
+          <Route path="/ajpretty" element={<Home />} />
           <Route path="/booking" element={<Booking />} />
           <Route path="/my-bookings" element={<MyBookings />} />
           <Route path="/courses" element={<Courses />} />
