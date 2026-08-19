@@ -1,6 +1,17 @@
 import { useState, useEffect } from 'react'
 import { supabase } from '../config/supabase'
-import { Building2, Phone, Mail, Palette, Save } from 'lucide-react'
+import { Building2, Phone, Mail, Palette, Save, CalendarDays, Clock } from 'lucide-react'
+
+const dayNames = ['星期日', '星期一', '星期二', '星期三', '星期四', '星期五', '星期六']
+const defaultBusinessHours = {
+  0: { enabled: false, start: '10:00', end: '19:00' },
+  1: { enabled: true, start: '10:00', end: '19:00' },
+  2: { enabled: true, start: '10:00', end: '19:00' },
+  3: { enabled: true, start: '10:00', end: '19:00' },
+  4: { enabled: true, start: '10:00', end: '19:00' },
+  5: { enabled: true, start: '10:00', end: '19:00' },
+  6: { enabled: true, start: '10:00', end: '19:00' }
+}
 
 export default function TenantSettings() {
   const [loading, setLoading] = useState(true)
@@ -14,7 +25,8 @@ export default function TenantSettings() {
     contact_email: '',
     line_id: '',
     instagram_id: '',
-    logo_url: ''
+    logo_url: '',
+    business_hours: defaultBusinessHours
   })
 
   useEffect(() => {
@@ -43,7 +55,8 @@ export default function TenantSettings() {
           contact_email: data.contact_email || '',
           line_id: data.line_id || '',
           instagram_id: data.instagram_id || '',
-          logo_url: data.logo_url || ''
+          logo_url: data.logo_url || '',
+          business_hours: { ...defaultBusinessHours, ...(data.business_hours || {}) }
         })
       }
     } catch (error) {
@@ -68,6 +81,7 @@ export default function TenantSettings() {
           line_id: tenantData.line_id,
           instagram_id: tenantData.instagram_id,
           logo_url: tenantData.logo_url,
+          business_hours: tenantData.business_hours,
           updated_at: new Date().toISOString()
         })
         .eq('subdomain', 'default')
@@ -85,6 +99,16 @@ export default function TenantSettings() {
 
   const handleInputChange = (field, value) => {
     setTenantData({ ...tenantData, [field]: value })
+  }
+
+  const handleBusinessHoursChange = (day, field, value) => {
+    setTenantData({
+      ...tenantData,
+      business_hours: {
+        ...tenantData.business_hours,
+        [day]: { ...tenantData.business_hours[day], [field]: value }
+      }
+    })
   }
 
   if (loading) {
@@ -248,6 +272,50 @@ export default function TenantSettings() {
                   placeholder="https://example.com/logo.png"
                 />
               </div>
+            </div>
+          </div>
+
+          <div className="mb-8">
+            <h2 className="text-xl font-semibold mb-2 flex items-center gap-2">
+              <CalendarDays size={24} />
+              上班日期與時段
+            </h2>
+            <p className="text-sm text-gray-600 mb-4">關閉的日期不會顯示在預約日曆，預約時段會依起訖時間每小時提供。</p>
+            <div className="space-y-3">
+              {dayNames.map((dayName, day) => {
+                const hours = tenantData.business_hours[day] || defaultBusinessHours[day]
+                return (
+                  <div key={day} className="grid grid-cols-1 sm:grid-cols-[7rem_1fr] gap-3 items-center border border-gray-200 rounded-lg p-3">
+                    <label className="flex items-center gap-3 font-medium">
+                      <input
+                        type="checkbox"
+                        checked={hours.enabled}
+                        onChange={(event) => handleBusinessHoursChange(day, 'enabled', event.target.checked)}
+                        className="w-5 h-5 accent-primary"
+                      />
+                      {dayName}
+                    </label>
+                    <div className="flex flex-wrap items-center gap-2">
+                      <Clock size={18} className="text-gray-500" />
+                      <input
+                        type="time"
+                        value={hours.start}
+                        onChange={(event) => handleBusinessHoursChange(day, 'start', event.target.value)}
+                        className="input-field sm:max-w-36"
+                        disabled={!hours.enabled}
+                      />
+                      <span className="text-gray-500">至</span>
+                      <input
+                        type="time"
+                        value={hours.end}
+                        onChange={(event) => handleBusinessHoursChange(day, 'end', event.target.value)}
+                        className="input-field sm:max-w-36"
+                        disabled={!hours.enabled}
+                      />
+                    </div>
+                  </div>
+                )
+              })}
             </div>
           </div>
 

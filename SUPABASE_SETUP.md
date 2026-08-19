@@ -46,7 +46,18 @@ VITE_TENANT_ID=default-tenant
 - `bookings` - 預約紀錄
 - `availability` - 時段可用性
 
-### 5. 啟動應用程式
+### 5. 啟用管理者會員註冊
+
+管理者登入使用 Supabase Auth 的 Email / Password。請在 Supabase Dashboard：
+
+1. 進入 `Authentication` → `Providers` → `Email`
+2. 確認 Email provider 已啟用
+3. 開發測試可暫時關閉 `Confirm email`，註冊後即可直接登入
+4. 正式環境建議保持 Email confirmation 開啟，並在 `Authentication` → `URL Configuration` 設定網站 URL
+
+登入頁中的「建立新的管理者會員」會建立 Supabase Auth 會員，成功登入後即可使用預約管理與工作室設定。
+
+### 6. 啟動應用程式
 
 ```bash
 npm install

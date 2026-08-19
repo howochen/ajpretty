@@ -1,5 +1,6 @@
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 import { BrowserRouter as Router, Navigate, Routes, Route, useLocation } from 'react-router-dom'
+import { supabase } from './config/supabase'
 import Navbar from './components/Navbar'
 import Home from './pages/Home'
 import Booking from './pages/Booking'
@@ -21,32 +22,54 @@ function ProtectedMerchantRoute({ isAdmin, children }) {
 }
 
 function App() {
-  const [isAdmin, setIsAdmin] = useState(() => sessionStorage.getItem('isAdmin') === 'true')
+  const [authUser, setAuthUser] = useState(null)
+  const [authLoading, setAuthLoading] = useState(true)
 
-  const handleLogin = () => {
-    sessionStorage.setItem('isAdmin', 'true')
-    setIsAdmin(true)
+  useEffect(() => {
+    let isMounted = true
+
+    supabase.auth.getSession().then(({ data: { session } }) => {
+      if (isMounted) {
+        setAuthUser(session?.user || null)
+        setAuthLoading(false)
+      }
+    })
+
+    const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, session) => {
+      setAuthUser(session?.user || null)
+      setAuthLoading(false)
+    })
+
+    return () => {
+      isMounted = false
+      subscription.unsubscribe()
+    }
+  }, [])
+
+  const handleLogout = async () => {
+    await supabase.auth.signOut()
   }
 
-  const handleLogout = () => {
-    sessionStorage.removeItem('isAdmin')
-    setIsAdmin(false)
+  const handleLogin = (user) => {
+    setAuthUser(user)
   }
+
+  const isAdmin = Boolean(authUser)
 
   return (
-    <Router>
+    <Router basename={import.meta.env.BASE_URL}>
       <div className="min-h-screen">
         <Navbar isAdmin={isAdmin} onLogout={handleLogout} />
-        <Routes>
+        {authLoading ? <div className="min-h-screen bg-secondary flex items-center justify-center">載入中...</div> : <Routes>
           <Route path="/" element={<Home />} />
           <Route path="/booking" element={<Booking />} />
           <Route path="/my-bookings" element={<MyBookings />} />
           <Route path="/courses" element={<Courses />} />
           <Route path="/beauty-diary" element={<BeautyDiary />} />
-          <Route path="/settings" element={<TenantSettings />} />
+          <Route path="/settings" element={<ProtectedMerchantRoute isAdmin={isAdmin}><TenantSettings /></ProtectedMerchantRoute>} />
           <Route path="/admin/login" element={isAdmin ? <Navigate to="/merchant" replace /> : <AdminLogin onLogin={handleLogin} />} />
           <Route path="/merchant" element={<ProtectedMerchantRoute isAdmin={isAdmin}><MerchantBookings /></ProtectedMerchantRoute>} />
-        </Routes>
+        </Routes>}
       </div>
     </Router>
   )

@@ -1,6 +1,6 @@
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
 import { ChevronRight, Check, Calendar, Clock, User } from 'lucide-react'
-import { saveBooking, getTimeSlotsForDate, toLocalDateStr } from '../utils/storage'
+import { saveBooking, getBusinessHours, getTimeSlotsForDate, toLocalDateStr } from '../utils/storage'
 
 const services = [
   { id: 1, name: '美睫服務', category: 'eyelash', price: 1200, duration: 90 },
@@ -24,6 +24,7 @@ export default function Booking() {
   const [step, setStep] = useState(1)
   const [loading, setLoading] = useState(false)
   const [availabilityData, setAvailabilityData] = useState([])
+  const [businessHours, setBusinessHours] = useState(null)
   const [bookingData, setBookingData] = useState({
     mode: 'A', // A: 先選老師, B: 先選時間
     service: null,
@@ -43,6 +44,10 @@ export default function Booking() {
       medications: false
     }
   })
+
+  useEffect(() => {
+    getBusinessHours().then(setBusinessHours)
+  }, [])
 
   const handleServiceSelect = (service) => {
     setBookingData({ ...bookingData, service })
@@ -136,7 +141,9 @@ export default function Booking() {
     threeMonthsLater.setDate(0) // Last day of the 3rd month
     
     while (currentDate <= threeMonthsLater) {
-      if (currentDate.getDay() !== 0) { // Skip Sunday
+      const dayHours = businessHours?.[currentDate.getDay()]
+      const isBusinessDay = dayHours ? dayHours.enabled : currentDate.getDay() !== 0
+      if (isBusinessDay) {
         dates.push(new Date(currentDate))
       }
       currentDate.setDate(currentDate.getDate() + 1)

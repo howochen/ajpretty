@@ -249,7 +249,12 @@ export const getTimeSlotsForDate = async (dateStr, timeSlots) => {
       return timeSlots.map((time) => ({ time, available: true }))
     }
 
-    const [availRes, bookingRes] = await Promise.all([
+    const [tenantRes, availRes, bookingRes] = await Promise.all([
+      supabase
+        .from('tenants')
+        .select('business_hours')
+        .eq('subdomain', currentTenantSubdomain)
+        .maybeSingle(),
       supabase
         .from('availability')
         .select('time, is_available')
@@ -262,8 +267,24 @@ export const getTimeSlotsForDate = async (dateStr, timeSlots) => {
         .eq('booking_date', dateStr)
     ])
 
+    if (tenantRes.error) throw tenantRes.error
     if (availRes.error) throw availRes.error
     if (bookingRes.error) throw bookingRes.error
+
+    const businessHours = tenantRes.data?.business_hours
+    if (businessHours) {
+      const dayHours = businessHours[new Date(`${dateStr}T00:00:00`).getDay()]
+      if (!dayHours?.enabled) return []
+
+      const configuredSlots = []
+      for (let hour = dayHours.start; hour < dayHours.end; ) {
+        configuredSlots.push(hour)
+        const [hours, minutes] = hour.split(':').map(Number)
+        const nextMinutes = hours * 60 + minutes + 60
+        hour = `${String(Math.floor(nextMinutes / 60)).padStart(2, '0')}:${String(nextMinutes % 60).padStart(2, '0')}`
+      }
+      timeSlots = configuredSlots
+    }
 
     const availMap = {}
     ;(availRes.data || []).forEach((row) => {
@@ -390,5 +411,21 @@ export const initializeAvailabilityForDate = async (date, timeSlots) => {
   } catch (error) {
     console.error('Error initializing availability:', error)
     return false
+  }
+}
+
+export const getBusinessHours = async () => {
+  try {
+    const { data, error } = await supabase
+      .from('tenants')
+      .select('business_hours')
+      .eq('subdomain', currentTenantSubdomain)
+      .maybeSingle()
+
+    if (error) throw error
+    return data?.business_hours || null
+  } catch (error) {
+    console.error('Error getting business hours:', error)
+    return null
   }
 }
