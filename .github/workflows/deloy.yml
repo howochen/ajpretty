@@ -4,7 +4,6 @@ on:
   push:
     branches:
       - aj # 若主要分支名稱為 master 請改為 master
-  workflow_dispatch: # 加上這行， Actions 頁面就會出現「Run workflow」手動按鈕
 
 permissions:
   contents: write
