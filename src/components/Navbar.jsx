@@ -21,7 +21,7 @@ export default function Navbar({ isAdmin, onLogout }) {
           </Link>
           
           <div className="hidden md:flex space-x-8">
-            <Link to="/" className="text-gray-700 hover:text-primary transition-colors">
+            <Link to="/ajpretty" className="text-gray-700 hover:text-primary transition-colors">
               首頁
             </Link>
             <Link to="/booking" className="text-gray-700 hover:text-primary transition-colors">

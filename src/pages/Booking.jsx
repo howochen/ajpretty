@@ -11,7 +11,7 @@ const services = [
 ]
 
 const teachers = [
-  { id: 1, name: '老師 A', level: '資深', extraFee: 500 },
+  { id: 1, name: '鄭湘蓉', level: '資深', extraFee: 500 },
   { id: 2, name: '老師 B', level: '主任', extraFee: 800 },
   { id: 3, name: '老師 C', level: '店長', extraFee: 1200 },
 ]
