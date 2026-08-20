@@ -1,14 +1,25 @@
 import { useState } from 'react'
 import { Calendar, Clock, User, Phone, X } from 'lucide-react'
 import { getBookingsByPhone, cancelBooking } from '../utils/storage'
+import { useTenant } from '../context/TenantContext'
 
-export default function MyBookings() {
+export default function MyBookings({ isAdmin = false }) {
+  const { tenant, saveSiteContent } = useTenant()
+  const content = tenant.site_content
   const [phone, setPhone] = useState('')
   const [bookings, setBookings] = useState([])
   const [searched, setSearched] = useState(false)
   const [loading, setLoading] = useState(false)
   const [showCancelModal, setShowCancelModal] = useState(false)
   const [cancelBookingId, setCancelBookingId] = useState(null)
+  const [editingCopy, setEditingCopy] = useState(false)
+  const [copyDraft, setCopyDraft] = useState({})
+  const [savingCopy, setSavingCopy] = useState(false)
+
+  const saveBookingPageCopy = async () => {
+    setSavingCopy(true)
+    try { await saveSiteContent(copyDraft); setEditingCopy(false) } catch (error) { alert(error.message || '頁面文字儲存失敗') } finally { setSavingCopy(false) }
+  }
 
   const handleSearch = async () => {
     if (!phone.trim()) {
@@ -110,12 +121,14 @@ export default function MyBookings() {
   return (
     <div className="min-h-screen bg-secondary py-12 px-4">
       <div className="max-w-4xl mx-auto">
-        <h1 className="text-3xl font-bold mb-8 text-center">我的預約</h1>
+        {isAdmin && <div className="mb-6 p-4 bg-primary/10 border border-primary/20 rounded-xl flex items-center justify-between gap-3"><div><p className="font-semibold text-primary">管理者編輯模式</p><p className="text-sm text-gray-600">可直接修改本頁標題與查詢提示。</p></div><button type="button" onClick={() => { setCopyDraft({ my_bookings_title: content.my_bookings_title, my_bookings_search_title: content.my_bookings_search_title, my_bookings_search_description: content.my_bookings_search_description }); setEditingCopy(!editingCopy) }} className="btn-primary">{editingCopy ? '關閉編輯' : '編輯本頁文字'}</button></div>}
+        {isAdmin && editingCopy && <div className="card mb-6"><div className="grid md:grid-cols-2 gap-3"><input className="input-field" value={copyDraft.my_bookings_title || ''} onChange={(event) => setCopyDraft({ ...copyDraft, my_bookings_title: event.target.value })} placeholder="頁面標題" /><input className="input-field" value={copyDraft.my_bookings_search_title || ''} onChange={(event) => setCopyDraft({ ...copyDraft, my_bookings_search_title: event.target.value })} placeholder="查詢區標題" /><textarea className="input-field md:col-span-2" value={copyDraft.my_bookings_search_description || ''} onChange={(event) => setCopyDraft({ ...copyDraft, my_bookings_search_description: event.target.value })} placeholder="查詢說明" /></div><button type="button" onClick={saveBookingPageCopy} className="btn-primary mt-4" disabled={savingCopy}>{savingCopy ? '儲存中...' : '儲存本頁文字'}</button></div>}
+        <h1 className="text-3xl font-bold mb-8 text-center">{content.my_bookings_title}</h1>
 
         {/* Search Section */}
         <div className="card mb-8">
-          <h2 className="text-xl font-semibold mb-4">查詢預約紀錄</h2>
-          <p className="text-gray-600 mb-4">請輸入您的手機號碼查詢預約紀錄</p>
+          <h2 className="text-xl font-semibold mb-4">{content.my_bookings_search_title}</h2>
+          <p className="text-gray-600 mb-4">{content.my_bookings_search_description}</p>
           <div className="flex gap-4">
             <input
               type="tel"

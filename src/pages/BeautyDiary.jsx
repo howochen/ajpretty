@@ -1,81 +1,112 @@
 import { useState } from 'react'
 import { Heart, Calendar, Sparkles, Star } from 'lucide-react'
+import { useTenant } from '../context/TenantContext'
 
-const diaryEntries = [
-  {
-    id: 1,
-    title: '自然款美睫 - 讓眼睛更有神',
-    category: '美睫',
-    date: '2024年8月15日',
-    image: 'https://images.unsplash.com/photo-1522337360788-8b13dee7a37e?w=400&h=300&fit=crop',
-    description: '這位客人想要自然不造作的效果，我們選擇了適合她眼型的捲翹度，讓眼睛看起來更有神卻不誇張。',
-    tags: ['自然款', '美睫', '日常妝']
-  },
-  {
-    id: 2,
-    title: '霧眉設計 - 完美眉型',
-    category: '眉型設計',
-    date: '2024年8月10日',
-    image: 'https://images.unsplash.com/photo-1516975080664-ed2fc6a32937?w=400&h=300&fit=crop',
-    description: '為客人設計適合臉型的霧眉，修飾原本稀疏的眉型，讓整體五官更加立體。',
-    tags: ['霧眉', '眉型設計', '持久妝']
-  },
-  {
-    id: 3,
-    title: '皮膚管理 - 恢復肌膚光采',
-    category: '皮膚管理',
-    date: '2024年8月5日',
-    image: 'https://images.unsplash.com/photo-1570172619644-dfd03ed5d881?w=400&h=300&fit=crop',
-    description: '針對乾燥肌膚進行深層保養，經過一連串的護膚程序，肌膚恢復了光采與彈性。',
-    tags: ['保濕', '皮膚管理', '深層保養']
-  },
-  {
-    id: 4,
-    title: '隱形眼線 - 自然放大雙眼',
-    category: '隱形眼線',
-    date: '2024年7月28日',
-    image: 'https://images.unsplash.com/photo-1487412947147-5cebf100ffc2?w=400&h=300&fit=crop',
-    description: '隱形眼線讓雙眼自然放大，不需每天畫眼線也能擁有神采奕奕的眼神。',
-    tags: ['隱形眼線', '持久妝', '自然']
-  },
-  {
-    id: 5,
-    title: '頭皮保養 - 健康從頭開始',
-    category: '頭皮保養',
-    date: '2024年7月20日',
-    image: 'https://images.unsplash.com/photo-1522337660859-02fbefca4702?w=400&h=300&fit=crop',
-    description: '專業頭皮檢測與保養，改善頭皮環境，讓髮絲從根部開始健康生長。',
-    tags: ['頭皮保養', '健康', '護髮']
-  },
-  {
-    id: 6,
-    title: '娃娃款美睫 - 可愛風格',
-    category: '美睫',
-    date: '2024年7月15日',
-    image: 'https://images.unsplash.com/photo-1512496015851-a90fb38ba796?w=400&h=300&fit=crop',
-    description: '娃娃款美睫讓眼睛圓潤可愛，適合喜歡韓系妝容的客人。',
-    tags: ['娃娃款', '美睫', '韓系']
-  }
-]
+const emptyEntry = { title: '', category: '', date: '', image: '', description: '', tags: [] }
 
-const categories = ['全部', '美睫', '皮膚管理', '眉型設計', '隱形眼線', '頭皮保養']
-
-export default function BeautyDiary() {
+export default function BeautyDiary({ isAdmin = false }) {
+  const { tenant, saveSiteContent } = useTenant()
+  const diaryEntries = tenant.site_content.diary_entries || []
+  const content = tenant.site_content
+  const categories = ['全部', ...new Set(diaryEntries.map((entry) => entry.category).filter(Boolean))]
   const [selectedCategory, setSelectedCategory] = useState('全部')
   const [selectedEntry, setSelectedEntry] = useState(null)
+  const [editingEntry, setEditingEntry] = useState(null)
+  const [saving, setSaving] = useState(false)
+  const [editingCta, setEditingCta] = useState(false)
+  const [ctaDraft, setCtaDraft] = useState({})
 
   const filteredEntries = selectedCategory === '全部' 
     ? diaryEntries 
     : diaryEntries.filter(entry => entry.category === selectedCategory)
+
+  const saveEntry = async () => {
+    if (!editingEntry?.title.trim()) return alert('請輸入標題')
+    const item = {
+      ...editingEntry,
+      title: editingEntry.title.trim(),
+      tags: Array.isArray(editingEntry.tags) ? editingEntry.tags : editingEntry.tags.split(',').map((tag) => tag.trim()).filter(Boolean)
+    }
+    const nextEntries = item.id
+      ? diaryEntries.map((entry) => entry.id === item.id ? item : entry)
+      : [...diaryEntries, { ...item, id: `diary-${Date.now()}` }]
+    setSaving(true)
+    try {
+      await saveSiteContent({ diary_entries: nextEntries })
+      setEditingEntry(null)
+    } catch (error) {
+      alert(error.message || '日誌儲存失敗')
+    } finally {
+      setSaving(false)
+    }
+  }
+
+  const removeEntry = async (entryId) => {
+    if (!window.confirm('確定要移除這篇變美日誌嗎？')) return
+    setSaving(true)
+    try {
+      await saveSiteContent({ diary_entries: diaryEntries.filter((entry) => entry.id !== entryId) })
+    } catch (error) {
+      alert(error.message || '日誌移除失敗')
+    } finally {
+      setSaving(false)
+    }
+  }
+
+  const moveEntry = async (entryId, direction) => {
+    const index = diaryEntries.findIndex((entry) => entry.id === entryId)
+    const targetIndex = index + direction
+    if (index < 0 || targetIndex < 0 || targetIndex >= diaryEntries.length) return
+    const nextEntries = [...diaryEntries]
+    ;[nextEntries[index], nextEntries[targetIndex]] = [nextEntries[targetIndex], nextEntries[index]]
+    setSaving(true)
+    try {
+      await saveSiteContent({ diary_entries: nextEntries })
+    } catch (error) {
+      alert(error.message || '日誌排序更新失敗')
+    } finally {
+      setSaving(false)
+    }
+  }
+
+  const saveCta = async () => {
+    setSaving(true)
+    try { await saveSiteContent(ctaDraft); setEditingCta(false) } catch (error) { alert(error.message || '日誌頁文字儲存失敗') } finally { setSaving(false) }
+  }
 
   return (
     <div className="min-h-screen bg-secondary py-12 px-4">
       <div className="max-w-7xl mx-auto">
         {/* Header */}
         <div className="text-center mb-12">
-          <h1 className="text-3xl font-bold mb-4">個人專屬變美日誌</h1>
-          <p className="text-gray-600">您的每次蛻變，都是我們共同的驕傲</p>
+          <h1 className="text-3xl font-bold mb-4">{content.diary_page_title}</h1>
+          <p className="text-gray-600">{content.diary_page_description}</p>
         </div>
+
+        {isAdmin && (
+          <div className="mb-8 p-4 bg-primary/10 border border-primary/20 rounded-xl flex flex-wrap items-center justify-between gap-3">
+            <div><p className="font-semibold text-primary">管理者編輯模式</p><p className="text-sm text-gray-600">可直接新增、編輯、移除或調整作品順序。</p></div>
+            <button type="button" onClick={() => setEditingEntry({ ...emptyEntry })} className="btn-primary" disabled={saving}>新增變美日誌</button>
+          </div>
+        )}
+
+        {isAdmin && <div className="mb-8 flex justify-end"><button type="button" onClick={() => { setCtaDraft({ diary_page_title: content.diary_page_title, diary_page_description: content.diary_page_description, diary_cta_title: content.diary_cta_title, diary_cta_description: content.diary_cta_description, diary_cta_button: content.diary_cta_button }); setEditingCta(!editingCta) }} className="btn-secondary">{editingCta ? '關閉頁面文字編輯' : '編輯頁面文字'}</button></div>}
+        {isAdmin && editingCta && <div className="card mb-8"><div className="grid md:grid-cols-2 gap-3"><input className="input-field" value={ctaDraft.diary_page_title || ''} onChange={(event) => setCtaDraft({ ...ctaDraft, diary_page_title: event.target.value })} placeholder="頁面標題" /><textarea className="input-field" value={ctaDraft.diary_page_description || ''} onChange={(event) => setCtaDraft({ ...ctaDraft, diary_page_description: event.target.value })} placeholder="頁面說明" /><input className="input-field" value={ctaDraft.diary_cta_title || ''} onChange={(event) => setCtaDraft({ ...ctaDraft, diary_cta_title: event.target.value })} placeholder="CTA 標題" /><textarea className="input-field" value={ctaDraft.diary_cta_description || ''} onChange={(event) => setCtaDraft({ ...ctaDraft, diary_cta_description: event.target.value })} placeholder="CTA 說明" /><input className="input-field" value={ctaDraft.diary_cta_button || ''} onChange={(event) => setCtaDraft({ ...ctaDraft, diary_cta_button: event.target.value })} placeholder="CTA 按鈕" /></div><button type="button" onClick={saveCta} className="btn-primary mt-4" disabled={saving}>{saving ? '儲存中...' : '儲存頁面文字'}</button></div>}
+
+        {isAdmin && editingEntry && (
+          <div className="card mb-8 border-2 border-primary/30">
+            <h2 className="text-xl font-bold mb-4">{editingEntry.id ? '編輯變美日誌' : '新增變美日誌'}</h2>
+            <div className="grid md:grid-cols-2 gap-4">
+              <input className="input-field" value={editingEntry.title} onChange={(event) => setEditingEntry({ ...editingEntry, title: event.target.value })} placeholder="標題" />
+              <input className="input-field" value={editingEntry.category} onChange={(event) => setEditingEntry({ ...editingEntry, category: event.target.value })} placeholder="分類" />
+              <input className="input-field" value={editingEntry.date} onChange={(event) => setEditingEntry({ ...editingEntry, date: event.target.value })} placeholder="日期" />
+              <input className="input-field" value={editingEntry.image} onChange={(event) => setEditingEntry({ ...editingEntry, image: event.target.value })} placeholder="圖片網址" />
+              <textarea className="input-field md:col-span-2" rows="3" value={editingEntry.description} onChange={(event) => setEditingEntry({ ...editingEntry, description: event.target.value })} placeholder="內容說明" />
+              <input className="input-field md:col-span-2" value={Array.isArray(editingEntry.tags) ? editingEntry.tags.join(', ') : editingEntry.tags} onChange={(event) => setEditingEntry({ ...editingEntry, tags: event.target.value })} placeholder="標籤，用逗號分隔" />
+            </div>
+            <div className="flex gap-3 mt-4"><button type="button" onClick={saveEntry} className="btn-primary" disabled={saving}>{saving ? '儲存中...' : '儲存'}</button><button type="button" onClick={() => setEditingEntry(null)} className="btn-secondary">取消</button></div>
+          </div>
+        )}
 
         {/* Category Filter */}
         <div className="flex flex-wrap justify-center gap-3 mb-8">
@@ -128,6 +159,14 @@ export default function BeautyDiary() {
                   </span>
                 ))}
               </div>
+              {isAdmin && (
+                <div className="flex flex-wrap gap-2 mt-4 pt-4 border-t border-gray-100" onClick={(event) => event.stopPropagation()}>
+                  <button type="button" onClick={() => setEditingEntry({ ...entry, tags: entry.tags || [] })} className="btn-secondary px-3 py-2 text-sm">編輯</button>
+                  <button type="button" onClick={() => moveEntry(entry.id, -1)} className="btn-secondary px-3 py-2 text-sm">上移</button>
+                  <button type="button" onClick={() => moveEntry(entry.id, 1)} className="btn-secondary px-3 py-2 text-sm">下移</button>
+                  <button type="button" onClick={() => removeEntry(entry.id)} className="text-red-600 border border-red-200 rounded-lg px-3 py-2 text-sm">移除</button>
+                </div>
+              )}
             </div>
           ))}
         </div>
@@ -190,13 +229,13 @@ export default function BeautyDiary() {
               <Heart className="fill-current" size={32} />
               <Sparkles size={32} />
             </div>
-            <h2 className="text-2xl font-bold mb-4">準備開始您的變美之旅？</h2>
-            <p className="mb-6 opacity-90">立即預約，讓我們為您打造專屬美麗</p>
+            <h2 className="text-2xl font-bold mb-4">{content.diary_cta_title}</h2>
+            <p className="mb-6 opacity-90">{content.diary_cta_description}</p>
             <button
               onClick={() => window.location.href = '/booking'}
               className="bg-white text-primary px-8 py-4 rounded-lg font-semibold hover:bg-gray-100 transition-colors"
             >
-              立即預約
+              {content.diary_cta_button}
             </button>
           </div>
         </div>

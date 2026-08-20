@@ -13,6 +13,7 @@ CREATE TABLE tenants (
   contact_email VARCHAR(255),
   line_id VARCHAR(100),
   instagram_id VARCHAR(100),
+  site_content JSONB NOT NULL DEFAULT '{}'::jsonb,
   business_hours JSONB,
   created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
   updated_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()

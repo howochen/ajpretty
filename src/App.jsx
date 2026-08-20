@@ -10,6 +10,7 @@ import BeautyDiary from './pages/BeautyDiary'
 import TenantSettings from './pages/TenantSettings'
 import MerchantBookings from './pages/MerchantBookings'
 import AdminLogin from './pages/AdminLogin'
+import { TenantProvider } from './context/TenantContext'
 
 function ProtectedMerchantRoute({ isAdmin, children }) {
   const location = useLocation()
@@ -58,19 +59,21 @@ function App() {
 
   return (
     <Router basename={import.meta.env.BASE_URL}>
-      <div className="min-h-screen">
-        <Navbar isAdmin={isAdmin} onLogout={handleLogout} />
-        {authLoading ? <div className="min-h-screen bg-secondary flex items-center justify-center">載入中...</div> : <Routes>
-          <Route path="/" element={<Home />} />
-          <Route path="/booking" element={<Booking />} />
-          <Route path="/my-bookings" element={<MyBookings />} />
-          <Route path="/courses" element={<Courses />} />
-          <Route path="/beauty-diary" element={<BeautyDiary />} />
+      <TenantProvider>
+        <div className="min-h-screen">
+          <Navbar isAdmin={isAdmin} onLogout={handleLogout} />
+          {authLoading ? <div className="min-h-screen bg-secondary flex items-center justify-center">載入中...</div> : <Routes>
+          <Route path="/" element={<Home isAdmin={isAdmin} />} />
+          <Route path="/booking" element={<Booking isAdmin={isAdmin} />} />
+          <Route path="/my-bookings" element={<MyBookings isAdmin={isAdmin} />} />
+          <Route path="/courses" element={<Courses isAdmin={isAdmin} />} />
+          <Route path="/beauty-diary" element={<BeautyDiary isAdmin={isAdmin} />} />
           <Route path="/settings" element={<ProtectedMerchantRoute isAdmin={isAdmin}><TenantSettings /></ProtectedMerchantRoute>} />
           <Route path="/admin/login" element={isAdmin ? <Navigate to="/merchant" replace /> : <AdminLogin onLogin={handleLogin} />} />
           <Route path="/merchant" element={<ProtectedMerchantRoute isAdmin={isAdmin}><MerchantBookings /></ProtectedMerchantRoute>} />
-        </Routes>}
-      </div>
+          </Routes>}
+        </div>
+      </TenantProvider>
     </Router>
   )
 }

@@ -1,5 +1,6 @@
 import { useState, useEffect, useRef } from 'react'
 import { supabase, getTenantUUID } from '../config/supabase'
+import { useTenant } from '../context/TenantContext'
 import { Building2, Phone, Mail, Palette, Save, CalendarDays, Clock, Loader2, Trash2, Upload, User } from 'lucide-react'
 import { getAvailabilityForDate, getAvailabilityForDates, getTeacherScheduleDates, getTeachers, saveTeacherScheduleDates, toLocalDateStr, updateAvailabilityBatch, uploadTeacherAvatar } from '../utils/storage'
 
@@ -13,7 +14,26 @@ const defaultBusinessHours = {
   6: { enabled: true, start: '10:00', end: '19:00' }
 }
 
+const defaultSiteContent = {
+  nav_home: '首頁', nav_booking: '線上預約', nav_my_bookings: '我的預約', nav_courses: '課程報名', nav_diary: '變美日誌',
+  hero_title: 'AJ創美學苑', hero_subtitle: '美睫｜皮膚管理｜眉型設計｜隱形眼線｜頭皮保養', hero_primary_button: '立即預約', hero_secondary_button: '查看作品',
+  services_title: '我們的服務', diary_title: '個人專屬變美日誌', diary_description: '您的每次蛻變，都是我們共同的驕傲', diary_button: '查看變美日誌', contact_title: '聯絡我們', courses_title: '課程報名', courses_description: '提升專業技能，開啟美業新篇章', diary_page_title: '個人專屬變美日誌', diary_page_description: '您的每次蛻變，都是我們共同的驕傲', my_bookings_title: '我的預約', my_bookings_search_title: '查詢預約紀錄', my_bookings_search_description: '請輸入您的手機號碼查詢預約紀錄',
+  booking_service_title: '選擇服務', booking_service_description: '請先選擇服務類別', booking_teacher_title: '選擇老師', booking_teacher_description: '選擇指定老師（費用依老師職級加價）', booking_date_title: '選擇日期與時段', booking_date_description: '選擇日期下方的可預約時段'
+}
+
+const siteContentGroups = [
+  { title: '導覽列', fields: [['nav_home', '首頁'], ['nav_booking', '線上預約'], ['nav_my_bookings', '我的預約'], ['nav_courses', '課程報名'], ['nav_diary', '變美日誌']] },
+  { title: '首頁', fields: [['hero_title', '首頁主標題'], ['hero_subtitle', '首頁副標題'], ['hero_primary_button', '主要按鈕文字'], ['hero_secondary_button', '次要按鈕文字'], ['services_title', '服務區標題'], ['diary_title', '日誌區標題'], ['diary_description', '日誌區說明'], ['diary_button', '日誌按鈕文字'], ['contact_title', '聯絡區標題']] },
+  { title: '課程與日誌頁面', fields: [['courses_title', '課程頁標題'], ['courses_description', '課程頁說明'], ['diary_page_title', '日誌頁標題'], ['diary_page_description', '日誌頁說明']] },
+  { title: '預約流程', fields: [['booking_service_title', '選擇服務標題'], ['booking_service_description', '選擇服務說明'], ['booking_teacher_title', '選擇老師標題'], ['booking_teacher_description', '選擇老師說明'], ['booking_date_title', '日期時段標題'], ['booking_date_description', '日期時段說明']] }
+]
+
+const emptyCourse = { title: '', description: '', duration: '', price: 0, deposit: 0, maxStudents: 1, currentStudents: 0, dates: [], level: '' }
+const emptyDiaryEntry = { title: '', category: '', date: '', image: '', description: '', tags: [] }
+const emptyService = { name: '', description: '', icon: 'sparkles' }
+
 export default function TenantSettings() {
+  const { refreshTenant } = useTenant()
   const [activeTab, setActiveTab] = useState('admin')
   const [loading, setLoading] = useState(true)
   const [saving, setSaving] = useState(false)
@@ -32,6 +52,9 @@ export default function TenantSettings() {
   const availabilityRequestRef = useRef(0)
   const [newTeacher, setNewTeacher] = useState({ name: '', description: '', experience: '', password: '' })
   const [newTeacherAvatar, setNewTeacherAvatar] = useState(null)
+  const [courseDraft, setCourseDraft] = useState(null)
+  const [diaryDraft, setDiaryDraft] = useState(null)
+  const [serviceDraft, setServiceDraft] = useState(null)
   const [tenantData, setTenantData] = useState({
     name: '',
     subdomain: '',
@@ -42,7 +65,8 @@ export default function TenantSettings() {
     line_id: '',
     instagram_id: '',
     logo_url: '',
-    business_hours: defaultBusinessHours
+    business_hours: defaultBusinessHours,
+    site_content: defaultSiteContent
   })
 
   useEffect(() => {
@@ -397,7 +421,8 @@ export default function TenantSettings() {
           line_id: data.line_id || '',
           instagram_id: data.instagram_id || '',
           logo_url: data.logo_url || '',
-          business_hours: { ...defaultBusinessHours, ...(data.business_hours || {}) }
+          business_hours: { ...defaultBusinessHours, ...(data.business_hours || {}) },
+          site_content: { ...defaultSiteContent, ...(data.site_content || {}) }
         })
       }
     } catch (error) {
@@ -423,11 +448,13 @@ export default function TenantSettings() {
           instagram_id: tenantData.instagram_id,
           logo_url: tenantData.logo_url,
           business_hours: tenantData.business_hours,
+          site_content: tenantData.site_content,
           updated_at: new Date().toISOString()
         })
         .eq('subdomain', 'default')
       
       if (error) throw error
+      await refreshTenant()
       
       alert('設定已儲存！')
     } catch (error) {
@@ -440,6 +467,34 @@ export default function TenantSettings() {
 
   const handleInputChange = (field, value) => {
     setTenantData({ ...tenantData, [field]: value })
+  }
+
+  const updateContentList = (field, nextList) => {
+    setTenantData((current) => ({ ...current, site_content: { ...current.site_content, [field]: nextList } }))
+  }
+
+  const saveCourseDraft = () => {
+    if (!courseDraft?.title.trim()) return alert('請輸入課程名稱')
+    const courses = tenantData.site_content.courses || []
+    const item = { ...courseDraft, title: courseDraft.title.trim(), price: Number(courseDraft.price) || 0, deposit: Number(courseDraft.deposit) || 0, maxStudents: Number(courseDraft.maxStudents) || 1, currentStudents: Number(courseDraft.currentStudents) || 0, dates: typeof courseDraft.dates === 'string' ? courseDraft.dates.split(',').map((value) => value.trim()).filter(Boolean) : courseDraft.dates }
+    updateContentList('courses', item.id ? courses.map((course) => course.id === item.id ? item : course) : [...courses, { ...item, id: `course-${Date.now()}` }])
+    setCourseDraft(null)
+  }
+
+  const saveDiaryDraft = () => {
+    if (!diaryDraft?.title.trim()) return alert('請輸入日誌標題')
+    const entries = tenantData.site_content.diary_entries || []
+    const item = { ...diaryDraft, title: diaryDraft.title.trim(), tags: typeof diaryDraft.tags === 'string' ? diaryDraft.tags.split(',').map((value) => value.trim()).filter(Boolean) : diaryDraft.tags }
+    updateContentList('diary_entries', item.id ? entries.map((entry) => entry.id === item.id ? item : entry) : [...entries, { ...item, id: `diary-${Date.now()}` }])
+    setDiaryDraft(null)
+  }
+
+  const saveServiceDraft = () => {
+    if (!serviceDraft?.name.trim()) return alert('請輸入服務名稱')
+    const services = tenantData.site_content.services || []
+    const item = { ...serviceDraft, name: serviceDraft.name.trim(), description: serviceDraft.description.trim() }
+    updateContentList('services', item.id ? services.map((service) => service.id === item.id ? item : service) : [...services, { ...item, id: `service-${Date.now()}` }])
+    setServiceDraft(null)
   }
 
   const handleBusinessHoursChange = (day, field, value) => {
@@ -647,6 +702,146 @@ export default function TenantSettings() {
               <p className="mt-2 opacity-90">{tenantData.contact_phone || '聯絡電話'}</p>
             </div>
           </div>
+
+          {false && <>
+          <div className="mb-8 border border-gray-200 rounded-xl p-6">
+            <div className="flex items-center justify-between gap-3 mb-4">
+              <div><h2 className="text-xl font-semibold">首頁服務卡片</h2><p className="text-sm text-gray-500 mt-1">直接新增、編輯或移除首頁服務。</p></div>
+              <button type="button" onClick={() => setServiceDraft({ ...emptyService })} className="btn-secondary whitespace-nowrap">新增服務</button>
+            </div>
+            <div className="space-y-3">
+              {(tenantData.site_content.services || []).map((service) => (
+                <div key={service.id} className="border border-gray-200 rounded-lg p-4">
+                  {serviceDraft?.id === service.id ? (
+                    <div className="grid md:grid-cols-3 gap-3">
+                      <input className="input-field" value={serviceDraft.name} onChange={(event) => setServiceDraft({ ...serviceDraft, name: event.target.value })} placeholder="服務名稱" />
+                      <input className="input-field md:col-span-2" value={serviceDraft.description} onChange={(event) => setServiceDraft({ ...serviceDraft, description: event.target.value })} placeholder="服務說明" />
+                      <select className="input-field" value={serviceDraft.icon} onChange={(event) => setServiceDraft({ ...serviceDraft, icon: event.target.value })}><option value="sparkles">星光</option><option value="heart">愛心</option><option value="scissors">剪刀</option><option value="calendar">日曆</option></select>
+                      <div className="md:col-span-2 flex gap-2"><button type="button" onClick={saveServiceDraft} className="btn-primary">儲存服務</button><button type="button" onClick={() => setServiceDraft(null)} className="btn-secondary">取消</button></div>
+                    </div>
+                  ) : (
+                    <div className="flex flex-wrap items-center justify-between gap-3"><div><h3 className="font-semibold">{service.name}</h3><p className="text-sm text-gray-500">{service.description}</p></div><div className="flex gap-2"><button type="button" onClick={() => setServiceDraft({ ...service })} className="btn-secondary px-4 py-2">編輯</button><button type="button" onClick={() => updateContentList('services', (tenantData.site_content.services || []).filter((item) => item.id !== service.id))} className="text-red-600 border border-red-200 rounded-lg px-4 py-2">移除</button></div></div>
+                  )}
+                </div>
+              ))}
+              {serviceDraft && !serviceDraft.id && <div className="border border-primary/30 rounded-lg p-4"><div className="grid md:grid-cols-3 gap-3"><input className="input-field" value={serviceDraft.name} onChange={(event) => setServiceDraft({ ...serviceDraft, name: event.target.value })} placeholder="服務名稱" /><input className="input-field md:col-span-2" value={serviceDraft.description} onChange={(event) => setServiceDraft({ ...serviceDraft, description: event.target.value })} placeholder="服務說明" /><select className="input-field" value={serviceDraft.icon} onChange={(event) => setServiceDraft({ ...serviceDraft, icon: event.target.value })}><option value="sparkles">星光</option><option value="heart">愛心</option><option value="scissors">剪刀</option><option value="calendar">日曆</option></select><div className="md:col-span-2 flex gap-2"><button type="button" onClick={saveServiceDraft} className="btn-primary">儲存服務</button><button type="button" onClick={() => setServiceDraft(null)} className="btn-secondary">取消</button></div></div></div>}
+            </div>
+          </div>
+
+          <div className="mb-8 border border-gray-200 rounded-xl p-6">
+            <h2 className="text-xl font-semibold mb-2">網站文字客製化</h2>
+            <p className="text-sm text-gray-500 mb-6">修改後會同步套用到首頁、導覽列與預約流程。</p>
+            <div className="space-y-8">
+              {siteContentGroups.map((group) => (
+                <section key={group.title}>
+                  <h3 className="font-semibold mb-3 text-primary">{group.title}</h3>
+                  <div className="grid md:grid-cols-2 gap-4">
+                    {group.fields.map(([field, label]) => (
+                      <label key={field} className="block">
+                        <span className="block text-sm font-medium mb-2">{label}</span>
+                        {field.includes('description') || field === 'hero_subtitle' ? (
+                          <textarea
+                            value={tenantData.site_content[field] || ''}
+                            onChange={(event) => setTenantData({ ...tenantData, site_content: { ...tenantData.site_content, [field]: event.target.value } })}
+                            className="input-field min-h-24 resize-y"
+                            rows={2}
+                          />
+                        ) : (
+                          <input
+                            type="text"
+                            value={tenantData.site_content[field] || ''}
+                            onChange={(event) => setTenantData({ ...tenantData, site_content: { ...tenantData.site_content, [field]: event.target.value } })}
+                            className="input-field"
+                          />
+                        )}
+                      </label>
+                    ))}
+                  </div>
+                </section>
+              ))}
+            </div>
+          </div>
+
+          <div className="mb-8 border border-gray-200 rounded-xl p-6">
+            <div className="flex items-center justify-between gap-3 mb-4">
+              <div>
+                <h2 className="text-xl font-semibold">課程報名內容</h2>
+                <p className="text-sm text-gray-500 mt-1">管理課程卡片，前台課程報名頁會同步更新。</p>
+              </div>
+              <button type="button" onClick={() => setCourseDraft({ ...emptyCourse, dates: [] })} className="btn-secondary whitespace-nowrap">新增課程</button>
+            </div>
+            <div className="space-y-3">
+              {(tenantData.site_content.courses || []).map((course) => (
+                <div key={course.id} className="border border-gray-200 rounded-lg p-4">
+                  {courseDraft?.id === course.id ? (
+                    <div className="grid md:grid-cols-2 gap-3">
+                      <input className="input-field" value={courseDraft.title} onChange={(event) => setCourseDraft({ ...courseDraft, title: event.target.value })} placeholder="課程名稱" />
+                      <input className="input-field" value={courseDraft.level} onChange={(event) => setCourseDraft({ ...courseDraft, level: event.target.value })} placeholder="程度" />
+                      <textarea className="input-field md:col-span-2" value={courseDraft.description} onChange={(event) => setCourseDraft({ ...courseDraft, description: event.target.value })} placeholder="課程說明" />
+                      <input className="input-field" value={courseDraft.duration} onChange={(event) => setCourseDraft({ ...courseDraft, duration: event.target.value })} placeholder="課程時長" />
+                      <input className="input-field" value={Array.isArray(courseDraft.dates) ? courseDraft.dates.join(', ') : courseDraft.dates} onChange={(event) => setCourseDraft({ ...courseDraft, dates: event.target.value })} placeholder="開課日期，用逗號分隔" />
+                      <input type="number" className="input-field" value={courseDraft.price} onChange={(event) => setCourseDraft({ ...courseDraft, price: event.target.value })} placeholder="課程費用" />
+                      <input type="number" className="input-field" value={courseDraft.deposit} onChange={(event) => setCourseDraft({ ...courseDraft, deposit: event.target.value })} placeholder="訂金" />
+                      <div className="md:col-span-2 flex gap-2"><button type="button" onClick={saveCourseDraft} className="btn-primary">儲存課程</button><button type="button" onClick={() => setCourseDraft(null)} className="btn-secondary">取消</button></div>
+                    </div>
+                  ) : (
+                    <div className="flex flex-wrap items-center justify-between gap-3"><div><h3 className="font-semibold">{course.title}</h3><p className="text-sm text-gray-500">{course.level} · {course.duration} · NT$ {Number(course.price).toLocaleString()}</p></div><div className="flex gap-2"><button type="button" onClick={() => setCourseDraft({ ...course, dates: course.dates || [] })} className="btn-secondary px-4 py-2">編輯</button><button type="button" onClick={() => updateContentList('courses', (tenantData.site_content.courses || []).filter((item) => item.id !== course.id))} className="text-red-600 border border-red-200 rounded-lg px-4 py-2">刪除</button></div></div>
+                  )}
+                </div>
+              ))}
+              {courseDraft && !courseDraft.id && (
+                <div className="border border-primary/30 rounded-lg p-4"><div className="grid md:grid-cols-2 gap-3">
+                  <input className="input-field" value={courseDraft.title} onChange={(event) => setCourseDraft({ ...courseDraft, title: event.target.value })} placeholder="課程名稱" />
+                  <input className="input-field" value={courseDraft.level} onChange={(event) => setCourseDraft({ ...courseDraft, level: event.target.value })} placeholder="程度" />
+                  <textarea className="input-field md:col-span-2" value={courseDraft.description} onChange={(event) => setCourseDraft({ ...courseDraft, description: event.target.value })} placeholder="課程說明" />
+                  <input className="input-field" value={courseDraft.duration} onChange={(event) => setCourseDraft({ ...courseDraft, duration: event.target.value })} placeholder="課程時長" />
+                  <input className="input-field" value={Array.isArray(courseDraft.dates) ? courseDraft.dates.join(', ') : courseDraft.dates} onChange={(event) => setCourseDraft({ ...courseDraft, dates: event.target.value })} placeholder="開課日期，用逗號分隔" />
+                  <input type="number" className="input-field" value={courseDraft.price} onChange={(event) => setCourseDraft({ ...courseDraft, price: event.target.value })} placeholder="課程費用" />
+                  <input type="number" className="input-field" value={courseDraft.deposit} onChange={(event) => setCourseDraft({ ...courseDraft, deposit: event.target.value })} placeholder="訂金" />
+                  <div className="md:col-span-2 flex gap-2"><button type="button" onClick={saveCourseDraft} className="btn-primary">儲存課程</button><button type="button" onClick={() => setCourseDraft(null)} className="btn-secondary">取消</button></div>
+                </div></div>
+              )}
+            </div>
+          </div>
+
+          <div className="mb-8 border border-gray-200 rounded-xl p-6">
+            <div className="flex items-center justify-between gap-3 mb-4">
+              <div><h2 className="text-xl font-semibold">變美日誌內容</h2><p className="text-sm text-gray-500 mt-1">新增作品案例，前台變美日誌會同步更新。</p></div>
+              <button type="button" onClick={() => setDiaryDraft({ ...emptyDiaryEntry, tags: [] })} className="btn-secondary whitespace-nowrap">新增日誌</button>
+            </div>
+            <div className="space-y-3">
+              {(tenantData.site_content.diary_entries || []).map((entry) => (
+                <div key={entry.id} className="border border-gray-200 rounded-lg p-4">
+                  {diaryDraft?.id === entry.id ? (
+                    <div className="grid md:grid-cols-2 gap-3">
+                      <input className="input-field" value={diaryDraft.title} onChange={(event) => setDiaryDraft({ ...diaryDraft, title: event.target.value })} placeholder="標題" />
+                      <input className="input-field" value={diaryDraft.category} onChange={(event) => setDiaryDraft({ ...diaryDraft, category: event.target.value })} placeholder="分類" />
+                      <input className="input-field" value={diaryDraft.date} onChange={(event) => setDiaryDraft({ ...diaryDraft, date: event.target.value })} placeholder="日期" />
+                      <input className="input-field" value={diaryDraft.image} onChange={(event) => setDiaryDraft({ ...diaryDraft, image: event.target.value })} placeholder="圖片網址" />
+                      <textarea className="input-field md:col-span-2" value={diaryDraft.description} onChange={(event) => setDiaryDraft({ ...diaryDraft, description: event.target.value })} placeholder="內容說明" />
+                      <input className="input-field md:col-span-2" value={Array.isArray(diaryDraft.tags) ? diaryDraft.tags.join(', ') : diaryDraft.tags} onChange={(event) => setDiaryDraft({ ...diaryDraft, tags: event.target.value })} placeholder="標籤，用逗號分隔" />
+                      <div className="md:col-span-2 flex gap-2"><button type="button" onClick={saveDiaryDraft} className="btn-primary">儲存日誌</button><button type="button" onClick={() => setDiaryDraft(null)} className="btn-secondary">取消</button></div>
+                    </div>
+                  ) : (
+                    <div className="flex flex-wrap items-center justify-between gap-3"><div className="flex items-center gap-3">{entry.image && <img src={entry.image} alt="" className="w-16 h-16 rounded-lg object-cover" />}<div><h3 className="font-semibold">{entry.title}</h3><p className="text-sm text-gray-500">{entry.category} · {entry.date}</p></div></div><div className="flex gap-2"><button type="button" onClick={() => setDiaryDraft({ ...entry, tags: entry.tags || [] })} className="btn-secondary px-4 py-2">編輯</button><button type="button" onClick={() => updateContentList('diary_entries', (tenantData.site_content.diary_entries || []).filter((item) => item.id !== entry.id))} className="text-red-600 border border-red-200 rounded-lg px-4 py-2">刪除</button></div></div>
+                  )}
+                </div>
+              ))}
+              {diaryDraft && !diaryDraft.id && (
+                <div className="border border-primary/30 rounded-lg p-4"><div className="grid md:grid-cols-2 gap-3">
+                  <input className="input-field" value={diaryDraft.title} onChange={(event) => setDiaryDraft({ ...diaryDraft, title: event.target.value })} placeholder="標題" />
+                  <input className="input-field" value={diaryDraft.category} onChange={(event) => setDiaryDraft({ ...diaryDraft, category: event.target.value })} placeholder="分類" />
+                  <input className="input-field" value={diaryDraft.date} onChange={(event) => setDiaryDraft({ ...diaryDraft, date: event.target.value })} placeholder="日期" />
+                  <input className="input-field" value={diaryDraft.image} onChange={(event) => setDiaryDraft({ ...diaryDraft, image: event.target.value })} placeholder="圖片網址" />
+                  <textarea className="input-field md:col-span-2" value={diaryDraft.description} onChange={(event) => setDiaryDraft({ ...diaryDraft, description: event.target.value })} placeholder="內容說明" />
+                  <input className="input-field md:col-span-2" value={Array.isArray(diaryDraft.tags) ? diaryDraft.tags.join(', ') : diaryDraft.tags} onChange={(event) => setDiaryDraft({ ...diaryDraft, tags: event.target.value })} placeholder="標籤，用逗號分隔" />
+                  <div className="md:col-span-2 flex gap-2"><button type="button" onClick={saveDiaryDraft} className="btn-primary">儲存日誌</button><button type="button" onClick={() => setDiaryDraft(null)} className="btn-secondary">取消</button></div>
+                </div></div>
+              )}
+            </div>
+          </div>
+
+          </>}
 
           {/* Save Button */}
           <button

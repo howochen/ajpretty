@@ -1,20 +1,16 @@
 import { useState, useEffect } from 'react'
 import { ChevronRight, Check, Clock, User } from 'lucide-react'
 import { saveBooking, getBusinessHours, getTeachers, getTimeSlotsForDates, toLocalDateStr } from '../utils/storage'
-
-const services = [
-  { id: 1, name: '美睫服務', category: 'eyelash', price: 1200, duration: 90 },
-  { id: 2, name: '皮膚管理', category: 'skincare', price: 2500, duration: 60 },
-  { id: 3, name: '眉型設計', category: 'eyebrow', price: 1800, duration: 45 },
-  { id: 4, name: '隱形眼線', category: 'eyeliner', price: 3000, duration: 120 },
-  { id: 5, name: '頭皮保養', category: 'scalp', price: 2000, duration: 60 },
-]
+import { useTenant } from '../context/TenantContext'
 
 const timeSlots = [
   '10:00', '11:00', '12:00', '13:00', '14:00', '15:00', '16:00', '17:00', '18:00', '19:00'
 ]
 
-export default function Booking() {
+export default function Booking({ isAdmin = false }) {
+  const { tenant, saveSiteContent } = useTenant()
+  const content = tenant.site_content
+  const services = content.booking_services || []
   const [step, setStep] = useState(1)
   const [loading, setLoading] = useState(false)
   const [availabilityData, setAvailabilityData] = useState([])
@@ -22,6 +18,10 @@ export default function Booking() {
   const [availabilityLoading, setAvailabilityLoading] = useState(false)
   const [businessHours, setBusinessHours] = useState(null)
   const [teachers, setTeachers] = useState([])
+  const [editingCopy, setEditingCopy] = useState(false)
+  const [copyDraft, setCopyDraft] = useState({})
+  const [savingCopy, setSavingCopy] = useState(false)
+  const [editingService, setEditingService] = useState(null)
   const [bookingData, setBookingData] = useState({
     mode: 'A', // A: 先選老師, B: 先選時間
     service: null,
@@ -69,6 +69,25 @@ export default function Booking() {
   const handleServiceSelect = (service) => {
     setBookingData({ ...bookingData, service })
     setStep(3)
+  }
+
+  const saveBookingCopy = async () => {
+    setSavingCopy(true)
+    try { await saveSiteContent(copyDraft); setEditingCopy(false) } catch (error) { alert(error.message || '預約文字儲存失敗') } finally { setSavingCopy(false) }
+  }
+
+  const saveService = async () => {
+    if (!editingService?.name.trim()) return alert('請輸入服務標題')
+    const item = { ...editingService, name: editingService.name.trim(), price: Number(editingService.price) || 0, duration: Number(editingService.duration) || 0 }
+    const nextServices = item.id ? services.map((service) => service.id === item.id ? item : service) : [...services, { ...item, id: `booking-service-${Date.now()}` }]
+    setSavingCopy(true)
+    try { await saveSiteContent({ booking_services: nextServices }); setEditingService(null) } catch (error) { alert(error.message || '服務儲存失敗') } finally { setSavingCopy(false) }
+  }
+
+  const removeService = async (id) => {
+    if (!window.confirm('確定要移除這項服務嗎？')) return
+    setSavingCopy(true)
+    try { await saveSiteContent({ booking_services: services.filter((service) => service.id !== id) }) } catch (error) { alert(error.message || '服務移除失敗') } finally { setSavingCopy(false) }
   }
 
   const handleTeacherSelect = (teacher) => {
@@ -179,6 +198,8 @@ export default function Booking() {
   return (
     <div className="min-h-screen bg-secondary py-12 px-4">
       <div className="max-w-4xl mx-auto">
+        {isAdmin && <div className="mb-6 p-4 bg-primary/10 border border-primary/20 rounded-xl flex items-center justify-between gap-3"><div><p className="font-semibold text-primary">管理者編輯模式</p><p className="text-sm text-gray-600">服務只可修改標題、價格與時間。</p></div><button type="button" onClick={() => setEditingService({ id: null, name: '', price: 0, duration: 0 })} className="btn-primary">新增服務</button></div>}
+        {isAdmin && editingService && <div className="card mb-6"><div className="grid md:grid-cols-3 gap-3"><input className="input-field" value={editingService.name} onChange={(event) => setEditingService({ ...editingService, name: event.target.value })} placeholder="服務標題" /><input type="number" className="input-field" value={editingService.price} onChange={(event) => setEditingService({ ...editingService, price: event.target.value })} placeholder="價格" /><input type="number" className="input-field" value={editingService.duration} onChange={(event) => setEditingService({ ...editingService, duration: event.target.value })} placeholder="時間（分鐘）" /></div><div className="flex gap-3 mt-4"><button type="button" onClick={saveService} className="btn-primary" disabled={savingCopy}>儲存服務</button><button type="button" onClick={() => setEditingService(null)} className="btn-secondary">取消</button></div></div>}
         {/* Progress Steps */}
         <div className="flex items-center justify-center mb-12">
           {[1, 2, 3, 4, 5, 6].map((s) => (
@@ -198,8 +219,8 @@ export default function Booking() {
         {/* Step 1: Select Service */}
         {step === 1 && (
           <div className="card">
-            <h2 className="text-2xl font-bold mb-6 text-center">選擇服務</h2>
-            <p className="text-gray-600 mb-6 text-center">請先選擇服務類別</p>
+            <h2 className="text-2xl font-bold mb-6 text-center">{content.booking_service_title}</h2>
+            <p className="text-gray-600 mb-6 text-center">{content.booking_service_description}</p>
             <div className="grid md:grid-cols-2 gap-4">
               {services.map((service) => (
                 <button
@@ -210,6 +231,7 @@ export default function Booking() {
                   <h3 className="text-xl font-semibold mb-2">{service.name}</h3>
                   <p className="text-gray-600">NT$ {service.price.toLocaleString()}</p>
                   <p className="text-sm text-gray-500">{service.duration} 分鐘</p>
+                  {isAdmin && <div className="flex gap-2 mt-4" onClick={(event) => event.stopPropagation()}><button type="button" onClick={() => setEditingService({ ...service })} className="btn-secondary px-3 py-2 text-sm">編輯</button><button type="button" onClick={() => removeService(service.id)} className="text-red-600 border border-red-200 rounded-lg px-3 py-2 text-sm">移除</button></div>}
                 </button>
               ))}
             </div>
@@ -219,8 +241,8 @@ export default function Booking() {
         {/* Step 3: Select Teacher */}
         {step === 3 && (
           <div className="card">
-            <h2 className="text-2xl font-bold mb-6 text-center">選擇老師</h2>
-            <p className="text-gray-600 mb-6 text-center">選擇指定老師（費用依老師職級加價）</p>
+            <h2 className="text-2xl font-bold mb-6 text-center">{content.booking_teacher_title}</h2>
+            <p className="text-gray-600 mb-6 text-center">{content.booking_teacher_description}</p>
             <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-5">
               <button
                 type="button"
@@ -281,8 +303,8 @@ export default function Booking() {
         {/* Step 4: Select Date */}
         {step === 4 && (
           <div className="card">
-            <h2 className="text-2xl font-bold mb-2 text-center">選擇日期與時段</h2>
-            <p className="text-gray-600 mb-6 text-center">選擇日期下方的可預約時段</p>
+            <h2 className="text-2xl font-bold mb-2 text-center">{content.booking_date_title}</h2>
+            <p className="text-gray-600 mb-6 text-center">{content.booking_date_description}</p>
             <button
               onClick={() => setStep(3)}
               className="mb-4 text-gray-600 hover:text-primary flex items-center gap-2"

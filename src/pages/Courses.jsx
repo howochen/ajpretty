@@ -1,46 +1,13 @@
 import { useState } from 'react'
 import { ChevronRight, Calendar, Users, BookOpen } from 'lucide-react'
+import { useTenant } from '../context/TenantContext'
 
-const courses = [
-  {
-    id: 1,
-    title: '專業美睫初級課程',
-    description: '從零開始學習專業美睫技術，包含理論與實作',
-    duration: '3天',
-    price: 25000,
-    deposit: 5000,
-    maxStudents: 6,
-    currentStudents: 4,
-    dates: ['2024年10月5-7日', '2024年11月2-4日'],
-    level: '初級'
-  },
-  {
-    id: 2,
-    title: '皮膚管理進階課程',
-    description: '深入學習皮膚管理知識與實務操作',
-    duration: '5天',
-    price: 45000,
-    deposit: 10000,
-    maxStudents: 8,
-    currentStudents: 6,
-    dates: ['2024年10月12-16日'],
-    level: '進階'
-  },
-  {
-    id: 3,
-    title: '眉型設計專業課程',
-    description: '掌握眉型設計精髓，打造完美眉型',
-    duration: '2天',
-    price: 18000,
-    deposit: 4000,
-    maxStudents: 4,
-    currentStudents: 2,
-    dates: ['2024年10月19-20日', '2024年11月9-10日'],
-    level: '中級'
-  }
-]
+const emptyCourse = { title: '', description: '', duration: '', price: 0, deposit: 0, maxStudents: 1, currentStudents: 0, dates: [], level: '' }
 
-export default function Courses() {
+export default function Courses({ isAdmin = false }) {
+  const { tenant, saveSiteContent } = useTenant()
+  const courses = tenant.site_content.courses || []
+  const content = tenant.site_content
   const [selectedCourse, setSelectedCourse] = useState(null)
   const [showRegistration, setShowRegistration] = useState(false)
   const [regForm, setRegForm] = useState({
@@ -51,6 +18,46 @@ export default function Courses() {
     date: '',
     note: ''
   })
+  const [editingCourse, setEditingCourse] = useState(null)
+  const [saving, setSaving] = useState(false)
+  const [editingNotices, setEditingNotices] = useState(false)
+  const [noticeDraft, setNoticeDraft] = useState([])
+  const [editingPageCopy, setEditingPageCopy] = useState(false)
+  const [pageCopyDraft, setPageCopyDraft] = useState({})
+
+  const saveCourse = async () => {
+    if (!editingCourse?.title.trim()) return alert('請輸入課程名稱')
+    const item = { ...editingCourse, title: editingCourse.title.trim(), price: Number(editingCourse.price) || 0, deposit: Number(editingCourse.deposit) || 0, dates: Array.isArray(editingCourse.dates) ? editingCourse.dates : editingCourse.dates.split(',').map((date) => date.trim()).filter(Boolean) }
+    const nextCourses = item.id ? courses.map((course) => course.id === item.id ? item : course) : [...courses, { ...item, id: `course-${Date.now()}` }]
+    setSaving(true)
+    try { await saveSiteContent({ courses: nextCourses }); setEditingCourse(null) } catch (error) { alert(error.message || '課程儲存失敗') } finally { setSaving(false) }
+  }
+
+  const removeCourse = async (id) => {
+    if (!window.confirm('確定要移除這門課程嗎？')) return
+    setSaving(true)
+    try { await saveSiteContent({ courses: courses.filter((course) => course.id !== id) }) } catch (error) { alert(error.message || '課程移除失敗') } finally { setSaving(false) }
+  }
+
+  const moveCourse = async (id, direction) => {
+    const index = courses.findIndex((course) => course.id === id)
+    const target = index + direction
+    if (index < 0 || target < 0 || target >= courses.length) return
+    const nextCourses = [...courses]
+    ;[nextCourses[index], nextCourses[target]] = [nextCourses[target], nextCourses[index]]
+    setSaving(true)
+    try { await saveSiteContent({ courses: nextCourses }) } catch (error) { alert(error.message || '課程排序更新失敗') } finally { setSaving(false) }
+  }
+
+  const saveNotices = async () => {
+    setSaving(true)
+    try { await saveSiteContent({ course_notices: noticeDraft.filter((notice) => notice.trim()) }); setEditingNotices(false) } catch (error) { alert(error.message || '注意事項儲存失敗') } finally { setSaving(false) }
+  }
+
+  const savePageCopy = async () => {
+    setSaving(true)
+    try { await saveSiteContent(pageCopyDraft); setEditingPageCopy(false) } catch (error) { alert(error.message || '課程頁文字儲存失敗') } finally { setSaving(false) }
+  }
 
   const handleCourseSelect = (course) => {
     setSelectedCourse(course)
@@ -77,9 +84,18 @@ export default function Courses() {
     <div className="min-h-screen bg-secondary py-12 px-4">
       <div className="max-w-6xl mx-auto">
         <div className="text-center mb-12">
-          <h1 className="text-3xl font-bold mb-4">課程報名</h1>
-          <p className="text-gray-600">提升專業技能，開啟美業新篇章</p>
+          <h1 className="text-3xl font-bold mb-4">{content.courses_title}</h1>
+          <p className="text-gray-600">{content.courses_description}</p>
         </div>
+
+        {isAdmin && <div className="mb-6 flex justify-end"><button type="button" onClick={() => { setPageCopyDraft({ courses_title: content.courses_title, courses_description: content.courses_description }); setEditingPageCopy(!editingPageCopy) }} className="btn-secondary">{editingPageCopy ? '關閉頁面文字編輯' : '編輯課程頁文字'}</button></div>}
+        {isAdmin && editingPageCopy && <div className="card mb-8"><div className="grid md:grid-cols-2 gap-3"><input className="input-field" value={pageCopyDraft.courses_title || ''} onChange={(event) => setPageCopyDraft({ ...pageCopyDraft, courses_title: event.target.value })} placeholder="課程頁標題" /><textarea className="input-field" value={pageCopyDraft.courses_description || ''} onChange={(event) => setPageCopyDraft({ ...pageCopyDraft, courses_description: event.target.value })} placeholder="課程頁說明" /></div><button type="button" onClick={savePageCopy} className="btn-primary mt-4" disabled={saving}>{saving ? '儲存中...' : '儲存頁面文字'}</button></div>}
+
+        {isAdmin && <div className="mb-8 p-4 bg-primary/10 border border-primary/20 rounded-xl flex flex-wrap items-center justify-between gap-3"><div><p className="font-semibold text-primary">管理者編輯模式</p><p className="text-sm text-gray-600">可直接新增、編輯、移除或調整課程順序。</p></div><button type="button" onClick={() => setEditingCourse({ ...emptyCourse, dates: [] })} className="btn-primary" disabled={saving}>新增課程</button></div>}
+
+        {isAdmin && editingCourse && <div className="card mb-8 border-2 border-primary/30"><h2 className="text-xl font-bold mb-4">{editingCourse.id ? '編輯課程' : '新增課程'}</h2><div className="grid md:grid-cols-2 gap-4"><input className="input-field" value={editingCourse.title} onChange={(event) => setEditingCourse({ ...editingCourse, title: event.target.value })} placeholder="課程名稱" /><input className="input-field" value={editingCourse.level} onChange={(event) => setEditingCourse({ ...editingCourse, level: event.target.value })} placeholder="程度" /><textarea className="input-field md:col-span-2" rows="3" value={editingCourse.description} onChange={(event) => setEditingCourse({ ...editingCourse, description: event.target.value })} placeholder="課程說明" /><input className="input-field" value={editingCourse.duration} onChange={(event) => setEditingCourse({ ...editingCourse, duration: event.target.value })} placeholder="課程時長" /><input className="input-field" value={Array.isArray(editingCourse.dates) ? editingCourse.dates.join(', ') : editingCourse.dates} onChange={(event) => setEditingCourse({ ...editingCourse, dates: event.target.value })} placeholder="開課日期，用逗號分隔" /><input type="number" className="input-field" value={editingCourse.price} onChange={(event) => setEditingCourse({ ...editingCourse, price: event.target.value })} placeholder="課程費用" /><input type="number" className="input-field" value={editingCourse.deposit} onChange={(event) => setEditingCourse({ ...editingCourse, deposit: event.target.value })} placeholder="訂金" /></div><div className="flex gap-3 mt-4"><button type="button" onClick={saveCourse} className="btn-primary" disabled={saving}>{saving ? '儲存中...' : '儲存'}</button><button type="button" onClick={() => setEditingCourse(null)} className="btn-secondary">取消</button></div></div>}
+
+        {isAdmin && <div className="card mb-8 border-2 border-primary/20"><div className="flex items-center justify-between gap-3 mb-4"><div><h2 className="text-xl font-bold">課程報名注意事項</h2><p className="text-sm text-gray-500 mt-1">可直接新增或移除注意事項。</p></div><button type="button" onClick={() => { setNoticeDraft([...(content.course_notices || [])]); setEditingNotices(!editingNotices) }} className="btn-secondary">{editingNotices ? '關閉編輯' : '編輯注意事項'}</button></div>{editingNotices && <><div className="space-y-3">{noticeDraft.map((notice, index) => <div key={index} className="flex gap-2"><input className="input-field" value={notice} onChange={(event) => setNoticeDraft(noticeDraft.map((item, itemIndex) => itemIndex === index ? event.target.value : item))} /><button type="button" onClick={() => setNoticeDraft(noticeDraft.filter((_, itemIndex) => itemIndex !== index))} className="text-red-600 border border-red-200 rounded-lg px-3">移除</button></div>)}</div><div className="flex gap-3 mt-4"><button type="button" onClick={() => setNoticeDraft([...noticeDraft, ''])} className="btn-secondary">新增注意事項</button><button type="button" onClick={saveNotices} className="btn-primary" disabled={saving}>儲存注意事項</button></div></>}</div>}
 
         {/* Course List */}
         {!showRegistration && (
@@ -122,6 +138,7 @@ export default function Courses() {
                   >
                     立即報名
                   </button>
+                  {isAdmin && <div className="flex flex-wrap gap-2 mt-3" onClick={(event) => event.stopPropagation()}><button type="button" onClick={() => setEditingCourse({ ...course, dates: course.dates || [] })} className="btn-secondary px-3 py-2 text-sm">編輯</button><button type="button" onClick={() => moveCourse(course.id, -1)} className="btn-secondary px-3 py-2 text-sm">上移</button><button type="button" onClick={() => moveCourse(course.id, 1)} className="btn-secondary px-3 py-2 text-sm">下移</button><button type="button" onClick={() => removeCourse(course.id)} className="text-red-600 border border-red-200 rounded-lg px-3 py-2 text-sm">移除</button></div>}
                 </div>
               </div>
             ))}
@@ -237,12 +254,7 @@ export default function Courses() {
           <div className="mt-12 card">
             <h3 className="text-xl font-bold mb-4">課程報名注意事項</h3>
             <ul className="space-y-2 text-gray-700">
-              <li>• 報名後請於規定時間內完成訂金匯款，逾期將取消報名資格</li>
-              <li>• 訂金匯款後請保留匯款收據，並回報後五碼以完成報名手續</li>
-              <li>• 課程開始前7天可申請改期，需支付手續費 NT$ 500</li>
-              <li>• 課程開始前3天內不接受改期或退費</li>
-              <li>• 如因不可抗力因素取消課程，將全額退費</li>
-              <li>• 課程包含教材與實作用品，學員需自備筆記本</li>
+              {(content.course_notices || []).map((notice, index) => <li key={index}>• {notice}</li>)}
             </ul>
           </div>
         )}
