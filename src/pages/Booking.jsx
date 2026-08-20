@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react'
-import { ChevronRight, Check, Calendar, Clock, User } from 'lucide-react'
-import { saveBooking, getBusinessHours, getTimeSlotsForDate, toLocalDateStr } from '../utils/storage'
+import { ChevronRight, Check, Clock, User } from 'lucide-react'
+import { saveBooking, getBusinessHours, getTeachers, getTimeSlotsForDates, toLocalDateStr } from '../utils/storage'
 
 const services = [
   { id: 1, name: '美睫服務', category: 'eyelash', price: 1200, duration: 90 },
@@ -8,12 +8,6 @@ const services = [
   { id: 3, name: '眉型設計', category: 'eyebrow', price: 1800, duration: 45 },
   { id: 4, name: '隱形眼線', category: 'eyeliner', price: 3000, duration: 120 },
   { id: 5, name: '頭皮保養', category: 'scalp', price: 2000, duration: 60 },
-]
-
-const teachers = [
-  { id: 1, name: '鄭湘蓉', level: '資深', extraFee: 500 },
-  { id: 2, name: '老師 B', level: '主任', extraFee: 800 },
-  { id: 3, name: '老師 C', level: '店長', extraFee: 1200 },
 ]
 
 const timeSlots = [
@@ -24,7 +18,10 @@ export default function Booking() {
   const [step, setStep] = useState(1)
   const [loading, setLoading] = useState(false)
   const [availabilityData, setAvailabilityData] = useState([])
+  const [availabilityByDate, setAvailabilityByDate] = useState({})
+  const [availabilityLoading, setAvailabilityLoading] = useState(false)
   const [businessHours, setBusinessHours] = useState(null)
+  const [teachers, setTeachers] = useState([])
   const [bookingData, setBookingData] = useState({
     mode: 'A', // A: 先選老師, B: 先選時間
     service: null,
@@ -47,15 +44,36 @@ export default function Booking() {
 
   useEffect(() => {
     getBusinessHours().then(setBusinessHours)
+    getTeachers().then(setTeachers)
   }, [])
+
+  useEffect(() => {
+    if (step !== 4 || !bookingData.teacher?.id) return
+
+    let active = true
+    const dates = getAvailableDates()
+    setAvailabilityLoading(true)
+    setAvailabilityByDate({})
+
+    getTimeSlotsForDates(dates.map(toLocalDateStr), timeSlots, bookingData.teacher.id).then((availability) => {
+      if (active) setAvailabilityByDate(availability)
+    }).finally(() => {
+      if (active) setAvailabilityLoading(false)
+    })
+
+    return () => {
+      active = false
+    }
+  }, [step, businessHours, bookingData.teacher?.id])
 
   const handleServiceSelect = (service) => {
     setBookingData({ ...bookingData, service })
-    setStep(2)
+    setStep(3)
   }
 
   const handleTeacherSelect = (teacher) => {
-    setBookingData({ ...bookingData, teacher })
+    setBookingData({ ...bookingData, teacher, date: null, time: null })
+    setAvailabilityByDate({})
     setStep(4)
   }
 
@@ -64,13 +82,13 @@ export default function Booking() {
     setAvailabilityData([])
     setStep(5)
     setLoading(true)
-    const availability = await getTimeSlotsForDate(toLocalDateStr(date), timeSlots)
+    const availability = await getTimeSlotsForDate(toLocalDateStr(date), timeSlots, bookingData.teacher?.id)
     setAvailabilityData(availability)
     setLoading(false)
   }
 
-  const handleTimeSelect = (time) => {
-    setBookingData({ ...bookingData, time })
+  const handleTimeSelect = (date, time) => {
+    setBookingData({ ...bookingData, date, time })
     setStep(6)
   }
 
@@ -123,6 +141,7 @@ export default function Booking() {
         }
       })
       setAvailabilityData([])
+      setAvailabilityByDate({})
     } else {
       alert('預約失敗，請稍後再試。')
     }
@@ -155,7 +174,7 @@ export default function Booking() {
     return date.toLocaleDateString('zh-TW', { month: 'long', day: 'numeric', weekday: 'short' })
   }
 
-  const totalPrice = bookingData.service?.price + (bookingData.teacher?.extraFee || 0)
+  const totalPrice = bookingData.service?.price + Number(bookingData.teacher?.extra_fee || bookingData.teacher?.extraFee || 0)
 
   return (
     <div className="min-h-screen bg-secondary py-12 px-4">
@@ -197,75 +216,48 @@ export default function Booking() {
           </div>
         )}
 
-        {/* Step 2: Select Booking Mode */}
-        {step === 2 && (
-          <div className="card">
-            <h2 className="text-2xl font-bold mb-6 text-center">選擇預約方式</h2>
-            <p className="text-gray-600 mb-6 text-center">您想先選老師，還是先選時間？</p>
-            <div className="grid md:grid-cols-2 gap-4">
-              <button
-                onClick={() => {
-                  setBookingData({ ...bookingData, mode: 'A' })
-                  setStep(3)
-                }}
-                className="p-6 border-2 border-gray-200 rounded-lg hover:border-primary hover:bg-primary/5 transition-all"
-              >
-                <User className="mx-auto mb-4 text-primary" size={32} />
-                <h3 className="text-xl font-semibold mb-2">先選老師</h3>
-                <p className="text-gray-600">選擇指定老師（費用依老師職級加價）</p>
-              </button>
-              <button
-                onClick={() => {
-                  setBookingData({ ...bookingData, mode: 'B' })
-                  setStep(4)
-                }}
-                className="p-6 border-2 border-gray-200 rounded-lg hover:border-primary hover:bg-primary/5 transition-all"
-              >
-                <Calendar className="mx-auto mb-4 text-primary" size={32} />
-                <h3 className="text-xl font-semibold mb-2">先選時間</h3>
-                <p className="text-gray-600">優先選擇方便的日期與時段</p>
-              </button>
-            </div>
-            <button
-              onClick={() => setStep(1)}
-              className="mt-6 text-gray-600 hover:text-primary flex items-center gap-2"
-            >
-              <ChevronRight size={16} className="rotate-180" />
-              返回選擇服務
-            </button>
-          </div>
-        )}
-
         {/* Step 3: Select Teacher */}
         {step === 3 && (
           <div className="card">
             <h2 className="text-2xl font-bold mb-6 text-center">選擇老師</h2>
             <p className="text-gray-600 mb-6 text-center">選擇指定老師（費用依老師職級加價）</p>
-            <div className="space-y-4">
+            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-5">
+              <button
+                type="button"
+                onClick={() => handleTeacherSelect({ id: null, name: '未指定老師', level: '不指定', extra_fee: 0 })}
+                className={`relative min-h-[25rem] p-6 border-2 rounded-2xl transition-all text-center flex flex-col items-center ${
+                  bookingData.teacher?.id === null ? 'border-primary bg-primary/10' : 'border-gray-200 hover:border-primary hover:bg-primary/5'
+                }`}
+              >
+                {bookingData.teacher?.id === null && <Check className="absolute top-4 right-4 text-primary" size={22} />}
+                <div className="w-28 h-28 rounded-full border border-gray-200 flex items-center justify-center mb-5">
+                  <User className="text-primary" size={52} />
+                </div>
+                <h3 className="text-xl font-semibold mb-2">未指定老師</h3>
+                <p className="text-gray-600 flex-1">由工作室安排合適老師</p>
+                <p className="w-full mt-5 py-3 rounded-xl bg-primary/10 text-primary font-semibold">不加價</p>
+              </button>
               {teachers.map((teacher) => (
                 <button
+                  type="button"
                   key={teacher.id}
                   onClick={() => handleTeacherSelect(teacher)}
-                  className={`w-full p-6 border-2 rounded-lg transition-all text-left flex justify-between items-center ${
+                  className={`relative min-h-[25rem] p-6 border-2 rounded-2xl transition-all text-center flex flex-col items-center ${
                     bookingData.teacher?.id === teacher.id
                       ? 'border-primary bg-primary/10'
                       : 'border-gray-200 hover:border-primary hover:bg-primary/5'
                   }`}
                 >
-                  <div className="flex items-center gap-4">
-                    {bookingData.teacher?.id === teacher.id && (
-                      <div className="w-6 h-6 bg-primary rounded-full flex items-center justify-center">
-                        <Check size={16} className="text-white" />
-                      </div>
-                    )}
-                    <div>
-                      <h3 className="text-xl font-semibold">{teacher.name}</h3>
-                      <p className="text-gray-600">{teacher.level}</p>
-                    </div>
+                  {bookingData.teacher?.id === teacher.id && <Check className="absolute top-4 right-4 text-primary" size={22} />}
+                  <div className="w-28 h-28 rounded-full overflow-hidden border border-gray-200 mb-5 flex items-center justify-center">
+                    {teacher.avatar_url ? (
+                      <img src={teacher.avatar_url} alt={teacher.name} className="w-full h-full object-cover" />
+                    ) : <User className="text-primary" size={52} />}
                   </div>
-                  <div className="text-right">
-                    <p className="text-primary font-semibold">+NT$ {teacher.extraFee.toLocaleString()}</p>
-                  </div>
+                  <h3 className="text-xl font-semibold mb-2">{teacher.name}</h3>
+                  <p className="inline-flex px-3 py-1 rounded-lg bg-primary/10 text-primary text-sm font-medium mb-3">{teacher.level || teacher.experience || '專業老師'}</p>
+                  <p className="text-sm text-gray-500 flex-1">{teacher.description || '專業老師，為您提供貼心服務'}</p>
+                  <p className="w-full mt-5 py-3 rounded-xl bg-primary/10 text-primary font-semibold">職級加價：+NT$ {Number(teacher.extra_fee || teacher.extraFee || 0).toLocaleString()}</p>
                 </button>
               ))}
             </div>
@@ -277,7 +269,7 @@ export default function Booking() {
               </div>
             )}
             <button
-              onClick={() => setStep(2)}
+              onClick={() => setStep(1)}
               className="mt-6 text-gray-600 hover:text-primary flex items-center gap-2"
             >
               <ChevronRight size={16} className="rotate-180" />
@@ -289,53 +281,62 @@ export default function Booking() {
         {/* Step 4: Select Date */}
         {step === 4 && (
           <div className="card">
-            <h2 className="text-2xl font-bold mb-6 text-center">
-              {bookingData.mode === 'A' ? '選擇日期與時段' : '選擇日期'}
-            </h2>
-            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
-              {getAvailableDates().map((date, index) => {
-                const isSelected = bookingData.date?.toDateString() === date.toDateString()
-                return (
-                  <button
-                    key={index}
-                    onClick={() => handleDateSelect(date)}
-                    className={`p-4 border-2 rounded-lg transition-all text-left ${
-                      isSelected
-                        ? 'border-primary bg-primary/10'
-                        : 'border-gray-200 hover:border-primary hover:bg-primary/5'
-                    }`}
-                  >
-                    <div className="flex justify-between items-start mb-2">
-                      <div>
-                        {isSelected && (
-                          <div className="flex items-center gap-1 mb-1">
-                            <Check size={16} className="text-primary" />
-                          </div>
-                        )}
-                        <p className="font-semibold">{formatDate(date)}</p>
-                      </div>
-                      <span className="px-2 py-1 rounded-full text-xs font-medium bg-blue-100 text-blue-800">
-                        選擇查看時段
-                      </span>
-                    </div>
-                  </button>
-                )
-              })}
-            </div>
-            {bookingData.date && (
-              <div className="mt-4 p-4 bg-green-50 border border-green-200 rounded-lg">
-                <p className="text-green-800 font-medium">
-                  ✓ 已選擇：{formatDate(bookingData.date)}
-                </p>
-              </div>
-            )}
+            <h2 className="text-2xl font-bold mb-2 text-center">選擇日期與時段</h2>
+            <p className="text-gray-600 mb-6 text-center">選擇日期下方的可預約時段</p>
             <button
-              onClick={() => setStep(bookingData.mode === 'A' ? 3 : 2)}
-              className="mt-6 text-gray-600 hover:text-primary flex items-center gap-2"
+              onClick={() => setStep(3)}
+              className="mb-4 text-gray-600 hover:text-primary flex items-center gap-2"
             >
               <ChevronRight size={16} className="rotate-180" />
               返回上一步
             </button>
+            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
+              {getAvailableDates().map((date) => {
+                const dateStr = toLocalDateStr(date)
+                const isSelected = bookingData.date?.toDateString() === date.toDateString()
+                return (
+                  <div
+                    key={dateStr}
+                    className={`p-4 border-2 rounded-lg transition-all text-left ${
+                      isSelected
+                        ? 'border-primary bg-primary/10'
+                        : 'border-gray-200'
+                    }`}
+                  >
+                    <div className="flex items-center gap-2 mb-3">
+                      {isSelected && <Check size={16} className="text-primary" />}
+                      <p className="font-semibold">{formatDate(date)}</p>
+                    </div>
+                    {availabilityLoading && !availabilityByDate[dateStr] ? (
+                      <p className="text-sm text-gray-500 py-2">載入時段中...</p>
+                    ) : availabilityByDate[dateStr]?.length > 0 ? (
+                      <div className="grid grid-cols-2 gap-2">
+                        {availabilityByDate[dateStr].map((slot) => (
+                          <button
+                            key={slot.time}
+                            type="button"
+                            onClick={() => slot.available && handleTimeSelect(date, slot.time)}
+                            disabled={!slot.available}
+                            className={`p-2 border rounded text-sm transition-colors ${
+                              !slot.available
+                                ? 'border-gray-200 bg-gray-100 text-gray-400 cursor-not-allowed'
+                                : bookingData.date?.toDateString() === date.toDateString() && bookingData.time === slot.time
+                                ? 'border-primary bg-primary text-white'
+                                : 'border-gray-200 hover:border-primary hover:bg-primary/5'
+                            }`}
+                          >
+                            <span className="block font-semibold">{slot.time}</span>
+                            <span className="block text-xs mt-1">{slot.available ? '可預約' : '不可預約'}</span>
+                          </button>
+                        ))}
+                      </div>
+                    ) : (
+                      <p className="text-sm text-gray-500 py-2">當日無可預約時段</p>
+                    )}
+                  </div>
+                )
+              })}
+            </div>
           </div>
         )}
 
@@ -355,14 +356,14 @@ export default function Booking() {
                 {availabilityData.length > 0 ? availabilityData.map((slot) => (
                   <button
                     key={slot.time}
-                    onClick={() => slot.available && handleTimeSelect(slot.time)}
+                    onClick={() => slot.available && handleTimeSelect(bookingData.date, slot.time)}
                     disabled={!slot.available}
                     className={`p-4 border-2 rounded-lg transition-all text-center ${
                       !slot.available
                         ? 'border-gray-200 bg-gray-100 cursor-not-allowed opacity-50'
                         : bookingData.time === slot.time
-                        ? 'border-primary bg-primary/10'
-                        : 'border-gray-200 hover:border-primary hover:bg-primary/5 cursor-pointer'
+                        ? 'border-green-500 bg-green-500 text-white'
+                        : 'border-green-300 bg-green-50 text-green-800 hover:border-green-500 hover:bg-green-100 cursor-pointer'
                     }`}
                   >
                     <Clock className={`mx-auto mb-2 ${slot.available ? 'text-primary' : 'text-gray-400'}`} size={20} />
@@ -378,7 +379,7 @@ export default function Booking() {
                   </button>
                 )) : (
                   <div className="col-span-full text-center py-4">
-                    <p className="text-gray-600">載入時段資料中...</p>
+                    <p className="text-gray-600">目前沒有可預約時段，請返回選擇其他日期。</p>
                   </div>
                 )}
               </div>
@@ -533,7 +534,7 @@ export default function Booking() {
                 確認預約
               </button>
               <button
-                onClick={() => setStep(5)}
+                onClick={() => setStep(4)}
                 className="w-full mt-3 text-gray-600 hover:text-primary flex items-center justify-center gap-2"
               >
                 <ChevronRight size={16} className="rotate-180" />

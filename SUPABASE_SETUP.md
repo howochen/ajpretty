@@ -46,6 +46,15 @@ VITE_TENANT_ID=default-tenant
 - `bookings` - 預約紀錄
 - `availability` - 時段可用性
 
+若是已經存在的專案，請另外在 SQL Editor 執行 `supabase-teacher-schedule.sql`。這會：
+
+- 為老師增加描述與資歷欄位
+- 為排班增加 `teacher_id`
+- 將排班唯一鍵改為「租戶＋老師＋日期＋時間」
+- 清除無法判定所屬老師的舊排班資料
+
+完成 migration 後，再到網站的 `設定 → 管理者設定` 新增老師並設定各自的上班時段。
+
 ### 5. 啟用管理者會員註冊
 
 管理者登入使用 Supabase Auth 的 Email / Password。請在 Supabase Dashboard：
@@ -64,6 +73,23 @@ VITE_TENANT_ID=default-tenant
 `http://localhost:5173/ajpretty/admin/login`
 
 登入頁中的「建立新的管理者會員」會建立 Supabase Auth 會員，成功登入後即可使用預約管理與工作室設定。
+
+目前前台已隱藏管理者註冊入口。新增管理者請在 Supabase Dashboard 操作：
+
+1. 進入 `Authentication` → `Users`
+2. 按右上角 `Add user` → `Create new user`
+3. 輸入管理者 Email 與密碼
+4. 若要直接登入，可勾選 `Auto Confirm User`，不需等待驗證信
+5. 建立後使用該 Email 與密碼登入網站的管理者登入頁
+
+不要直接對 `auth.users` 執行 INSERT；Supabase Auth 會自行建立必要的加密密碼與欄位。若要標記管理者，建立使用者時可在 User metadata 加入：
+
+```json
+{
+   "role": "admin",
+   "tenant_subdomain": "default"
+}
+```
 
 ### 6. 收不到驗證信排查
 

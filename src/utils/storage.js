@@ -53,17 +53,7 @@ export const saveBooking = async (bookingData) => {
       serviceUUID = serviceData?.id
     }
     
-    // Get teacher UUID if teacher exists
-    let teacherUUID = null
-    if (bookingData.teacher?.id) {
-      const { data: teacherData } = await supabase
-        .from('teachers')
-        .select('id')
-        .eq('name', bookingData.teacher.name)
-        .eq('tenant_id', tenantUUID)
-        .maybeSingle()
-      teacherUUID = teacherData?.id
-    }
+    const teacherUUID = bookingData.teacher?.id || null
     
     const { data, error } = await supabase
       .from('bookings')
@@ -90,7 +80,8 @@ export const saveBooking = async (bookingData) => {
     await updateAvailability(
       bookingData.date, 
       bookingData.time, 
-      false
+      false,
+      teacherUUID
     )
     
     return data
@@ -150,7 +141,7 @@ export const cancelBooking = async (bookingId) => {
       if (error) throw error
       
       // Restore availability
-      await updateAvailability(booking.booking_date, booking.booking_time, true)
+      await updateAvailability(booking.booking_date, booking.booking_time, true, booking.teacher_id)
       
       return true
     }
@@ -184,7 +175,7 @@ export const updateBookingStatus = async (bookingId, status) => {
     if (error) throw error
 
     if (status === 'cancelled' && booking.status !== 'cancelled') {
-      await updateAvailability(booking.booking_date, booking.booking_time, true)
+      await updateAvailability(booking.booking_date, booking.booking_time, true, booking.teacher_id)
     }
 
     return true
@@ -242,12 +233,101 @@ export const assignTeacherToBooking = async (bookingId, teacherName) => {
   }
 }
 
-export const getTimeSlotsForDate = async (dateStr, timeSlots) => {
+export const getTeachers = async () => {
+  try {
+    const tenantUUID = await getTenantUUID()
+    if (!tenantUUID) return []
+
+    let { data, error } = await supabase
+      .from('teachers')
+      .select('id, name, level, description, experience, password, avatar_url, extra_fee')
+      .eq('tenant_id', tenantUUID)
+      .eq('is_active', true)
+      .order('created_at', { ascending: true })
+
+    if (error) {
+      const basicResult = await supabase
+        .from('teachers')
+        .select('id, name, level, password, avatar_url, extra_fee')
+        .eq('tenant_id', tenantUUID)
+        .eq('is_active', true)
+        .order('created_at', { ascending: true })
+
+      if (basicResult.error) {
+        const legacyResult = await supabase
+          .from('teachers')
+          .select('id, name, level, extra_fee')
+          .eq('tenant_id', tenantUUID)
+          .eq('is_active', true)
+          .order('created_at', { ascending: true })
+
+        if (legacyResult.error) throw error
+        data = legacyResult.data
+      } else {
+        data = basicResult.data
+      }
+    }
+    return data || []
+  } catch (error) {
+    console.error('Error getting teachers:', error)
+    return []
+  }
+}
+
+export const uploadTeacherAvatar = async (file, teacherId) => {
+  try {
+    const tenantUUID = await getTenantUUID()
+    if (!tenantUUID || !teacherId || !file) return null
+    if (!file.type.startsWith('image/')) throw new Error('請選擇圖片檔案')
+    if (file.size > 5 * 1024 * 1024) throw new Error('圖片大小不可超過 5MB')
+
+    const extension = file.name.split('.').pop()?.toLowerCase() || 'jpg'
+    const path = `${tenantUUID}/${teacherId}-${Date.now()}.${extension}`
+    const { error: uploadError } = await supabase.storage
+      .from('teacher-avatars')
+      .upload(path, file, { upsert: true, contentType: file.type })
+
+    if (uploadError) throw uploadError
+    const { data: publicData } = supabase.storage.from('teacher-avatars').getPublicUrl(path)
+    const avatarUrl = publicData.publicUrl
+
+    const { data: updatedTeacher, error: updateError } = await supabase
+      .from('teachers')
+      .update({ avatar_url: avatarUrl, updated_at: new Date().toISOString() })
+      .eq('id', teacherId)
+      .eq('tenant_id', tenantUUID)
+      .select('id, avatar_url')
+      .maybeSingle()
+
+    if (updateError) throw updateError
+    if (!updatedTeacher?.avatar_url) throw new Error('大頭貼已上傳，但老師資料未更新，請確認 teachers.avatar_url 欄位與 UPDATE 權限')
+    return avatarUrl
+  } catch (error) {
+    console.error('Error uploading teacher avatar:', error)
+    throw error
+  }
+}
+
+export const getTimeSlotsForDate = async (dateStr, timeSlots, teacherId) => {
   try {
     const tenantUUID = await getTenantUUID()
     if (!tenantUUID) {
       return timeSlots.map((time) => ({ time, available: true }))
     }
+
+    const availabilityQuery = supabase
+      .from('availability')
+      .select('time, is_available')
+      .eq('tenant_id', tenantUUID)
+      .eq('date', dateStr)
+      .eq('teacher_id', teacherId)
+
+    const bookingQuery = supabase
+      .from('bookings')
+      .select('booking_time, status')
+      .eq('tenant_id', tenantUUID)
+      .eq('booking_date', dateStr)
+      .eq('teacher_id', teacherId)
 
     const [tenantRes, availRes, bookingRes] = await Promise.all([
       supabase
@@ -255,16 +335,8 @@ export const getTimeSlotsForDate = async (dateStr, timeSlots) => {
         .select('business_hours')
         .eq('subdomain', currentTenantSubdomain)
         .maybeSingle(),
-      supabase
-        .from('availability')
-        .select('time, is_available')
-        .eq('tenant_id', tenantUUID)
-        .eq('date', dateStr),
-      supabase
-        .from('bookings')
-        .select('booking_time, status')
-        .eq('tenant_id', tenantUUID)
-        .eq('booking_date', dateStr)
+      availabilityQuery,
+      bookingQuery
     ])
 
     if (tenantRes.error) throw tenantRes.error
@@ -274,16 +346,16 @@ export const getTimeSlotsForDate = async (dateStr, timeSlots) => {
     const businessHours = tenantRes.data?.business_hours
     if (businessHours) {
       const dayHours = businessHours[new Date(`${dateStr}T00:00:00`).getDay()]
-      if (!dayHours?.enabled) return []
-
-      const configuredSlots = []
-      for (let hour = dayHours.start; hour < dayHours.end; ) {
-        configuredSlots.push(hour)
-        const [hours, minutes] = hour.split(':').map(Number)
-        const nextMinutes = hours * 60 + minutes + 60
-        hour = `${String(Math.floor(nextMinutes / 60)).padStart(2, '0')}:${String(nextMinutes % 60).padStart(2, '0')}`
+      if (dayHours?.enabled) {
+        const configuredSlots = []
+        for (let hour = dayHours.start; hour < dayHours.end; ) {
+          configuredSlots.push(hour)
+          const [hours, minutes] = hour.split(':').map(Number)
+          const nextMinutes = hours * 60 + minutes + 60
+          hour = `${String(Math.floor(nextMinutes / 60)).padStart(2, '0')}:${String(nextMinutes % 60).padStart(2, '0')}`
+        }
+        timeSlots = configuredSlots
       }
-      timeSlots = configuredSlots
     }
 
     const availMap = {}
@@ -299,7 +371,7 @@ export const getTimeSlotsForDate = async (dateStr, timeSlots) => {
 
     return timeSlots.map((time) => ({
       time,
-      available: !bookedTimes.has(time) && availMap[time] !== false
+      available: !bookedTimes.has(time) && (teacherId ? availMap[time] === true : availMap[time] !== false)
     }))
   } catch (error) {
     console.error('Error getting time slots:', error)
@@ -307,8 +379,78 @@ export const getTimeSlotsForDate = async (dateStr, timeSlots) => {
   }
 }
 
+export const getTimeSlotsForDates = async (dateStrs, timeSlots, teacherId) => {
+  try {
+    const tenantUUID = await getTenantUUID()
+    if (!tenantUUID) return {}
+
+    const [tenantRes, availRes, bookingRes] = await Promise.all([
+      supabase
+        .from('tenants')
+        .select('business_hours')
+        .eq('subdomain', currentTenantSubdomain)
+        .maybeSingle(),
+      supabase
+        .from('availability')
+        .select('date, time, is_available')
+        .eq('tenant_id', tenantUUID)
+        .eq('teacher_id', teacherId)
+        .in('date', dateStrs),
+      supabase
+        .from('bookings')
+        .select('booking_date, booking_time, status')
+        .eq('tenant_id', tenantUUID)
+        .eq('teacher_id', teacherId)
+        .in('booking_date', dateStrs)
+    ])
+
+    if (tenantRes.error) throw tenantRes.error
+    if (availRes.error) throw availRes.error
+    if (bookingRes.error) throw bookingRes.error
+
+    const availabilityMap = {}
+    ;(availRes.data || []).forEach((row) => {
+      if (!availabilityMap[row.date]) availabilityMap[row.date] = {}
+      availabilityMap[row.date][row.time] = row.is_available
+    })
+
+    const bookingsMap = {}
+    ;(bookingRes.data || [])
+      .filter((booking) => booking.status !== 'cancelled')
+      .forEach((booking) => {
+        if (!bookingsMap[booking.booking_date]) bookingsMap[booking.booking_date] = new Set()
+        bookingsMap[booking.booking_date].add(booking.booking_time)
+      })
+
+    const businessHours = tenantRes.data?.business_hours
+    return Object.fromEntries(dateStrs.map((dateStr) => {
+      const dayHours = businessHours?.[new Date(`${dateStr}T00:00:00`).getDay()]
+      let configuredSlots = timeSlots
+      if (dayHours?.enabled) {
+        configuredSlots = []
+        for (let hour = dayHours.start; hour < dayHours.end; ) {
+          configuredSlots.push(hour)
+          const [hours, minutes] = hour.split(':').map(Number)
+          const nextMinutes = hours * 60 + minutes + 60
+          hour = `${String(Math.floor(nextMinutes / 60)).padStart(2, '0')}:${String(nextMinutes % 60).padStart(2, '0')}`
+        }
+      }
+
+      const dateAvailability = availabilityMap[dateStr] || {}
+      const bookedTimes = bookingsMap[dateStr] || new Set()
+      return [dateStr, configuredSlots.map((time) => ({
+        time,
+        available: !bookedTimes.has(time) && dateAvailability[time] === true
+      }))]
+    }))
+  } catch (error) {
+    console.error('Error getting time slots:', error)
+    return {}
+  }
+}
+
 // Get availability data for a specific date
-export const getAvailabilityForDate = async (date) => {
+export const getAvailabilityForDate = async (date, teacherId) => {
   try {
     const tenantUUID = await getTenantUUID()
     if (!tenantUUID) return {}
@@ -318,6 +460,7 @@ export const getAvailabilityForDate = async (date) => {
       .select('*')
       .eq('tenant_id', tenantUUID)
       .eq('date', date)
+      .eq('teacher_id', teacherId)
     
     if (error) throw error
     
@@ -334,8 +477,83 @@ export const getAvailabilityForDate = async (date) => {
   }
 }
 
+export const getAvailabilityForDates = async (dates, teacherId) => {
+  try {
+    const tenantUUID = await getTenantUUID()
+    if (!tenantUUID || !teacherId || dates.length === 0) return {}
+
+    const { data, error } = await supabase
+      .from('availability')
+      .select('date, time, is_available, teacher_id')
+      .eq('tenant_id', tenantUUID)
+      .eq('teacher_id', teacherId)
+      .in('date', dates)
+
+    if (error) throw error
+
+    return (data || []).reduce((result, row) => {
+      if (row.teacher_id !== teacherId) return result
+      if (!result[row.date]) result[row.date] = {}
+      result[row.date][row.time] = row.is_available
+      return result
+    }, {})
+  } catch (error) {
+    console.error('Error getting availability dates:', error)
+    return {}
+  }
+}
+
+export const getTeacherScheduleDates = async (teacherId) => {
+  try {
+    const tenantUUID = await getTenantUUID()
+    if (!tenantUUID || !teacherId) return null
+
+    const { data, error } = await supabase
+      .from('teacher_schedule_dates')
+      .select('date')
+      .eq('tenant_id', tenantUUID)
+      .eq('teacher_id', teacherId)
+      .order('date', { ascending: true })
+
+    if (error) {
+      console.error('Error getting teacher schedule dates:', error)
+      return null
+    }
+    return (data || []).map((row) => row.date)
+  } catch (error) {
+    console.error('Error getting teacher schedule dates:', error)
+    return []
+  }
+}
+
+export const saveTeacherScheduleDates = async (dates, teacherId) => {
+  try {
+    const tenantUUID = await getTenantUUID()
+    if (!tenantUUID || !teacherId) return false
+
+    const { error: deleteError } = await supabase
+      .from('teacher_schedule_dates')
+      .delete()
+      .eq('tenant_id', tenantUUID)
+      .eq('teacher_id', teacherId)
+
+    if (deleteError) throw deleteError
+    if (dates.length === 0) return true
+
+    const { error } = await supabase
+      .from('teacher_schedule_dates')
+      .insert(dates.map((date) => ({ tenant_id: tenantUUID, teacher_id: teacherId, date })))
+
+    if (error) throw error
+    return true
+  } catch (error) {
+    console.error('Error saving teacher schedule dates:', error)
+    return false
+  }
+}
+
 // Update availability for a specific date and time
-export const updateAvailability = async (date, time, isAvailable) => {
+export const updateAvailability = async (date, time, isAvailable, teacherId) => {
   try {
     const tenantUUID = await getTenantUUID()
     if (!tenantUUID) return false
@@ -344,17 +562,70 @@ export const updateAvailability = async (date, time, isAvailable) => {
       .from('availability')
       .upsert({
         tenant_id: tenantUUID,
+        teacher_id: teacherId,
         date: date,
         time: time,
         is_available: isAvailable
       }, {
-        onConflict: 'tenant_id,date,time'
+        onConflict: 'tenant_id,teacher_id,date,time'
       })
     
     if (error) throw error
     return true
   } catch (error) {
     console.error('Error updating availability:', error)
+    return false
+  }
+}
+
+export const updateAvailabilityBatch = async (availability, teacherId) => {
+  try {
+    const tenantUUID = await getTenantUUID()
+    if (!tenantUUID || !teacherId || availability.length === 0) return false
+
+    const { data: teacher, error: teacherError } = await supabase
+      .from('teachers')
+      .select('id')
+      .eq('id', teacherId)
+      .eq('tenant_id', tenantUUID)
+      .eq('is_active', true)
+      .maybeSingle()
+
+    if (teacherError) throw teacherError
+    if (!teacher) throw new Error('找不到目前老師，無法儲存上班時段')
+
+    const rowsToSave = availability.map(({ date, time, isAvailable }) => ({
+      tenant_id: tenantUUID,
+      teacher_id: teacherId,
+      date,
+      time,
+      is_available: isAvailable
+    }))
+
+    const { error } = await supabase
+      .from('availability')
+      .upsert(
+        rowsToSave,
+        { onConflict: 'tenant_id,teacher_id,date,time' }
+      )
+
+    if (error) throw error
+
+    const { data: savedRows, error: verifyError } = await supabase
+      .from('availability')
+      .select('date, time, is_available, teacher_id')
+      .eq('tenant_id', tenantUUID)
+      .eq('teacher_id', teacherId)
+
+    if (verifyError) throw verifyError
+
+    const savedMap = new Map(savedRows.map((row) => [`${row.date}|${row.time}`, row]))
+    return rowsToSave.every((row) => {
+      const savedRow = savedMap.get(`${row.date}|${row.time}`)
+      return savedRow?.teacher_id === teacherId && savedRow.is_available === row.is_available
+    })
+  } catch (error) {
+    console.error('Error updating availability batch:', error)
     return false
   }
 }

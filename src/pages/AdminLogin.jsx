@@ -1,5 +1,5 @@
 import { useState } from 'react'
-import { LockKeyhole, UserPlus } from 'lucide-react'
+import { LockKeyhole } from 'lucide-react'
 import { useLocation, useNavigate } from 'react-router-dom'
 import { supabase } from '../config/supabase'
 
@@ -102,10 +102,10 @@ export default function AdminLogin({ onLogin }) {
       <section className="card w-full max-w-md">
         <div className="text-center mb-8">
           <div className="w-12 h-12 rounded-full bg-primary/10 text-primary flex items-center justify-center mx-auto mb-4">
-            {isRegistering ? <UserPlus size={24} /> : <LockKeyhole size={24} />}
+            <LockKeyhole size={24} />
           </div>
-          <h1 className="text-2xl font-bold">{isRegistering ? '註冊管理者會員' : '管理者登入'}</h1>
-          <p className="text-gray-600 mt-2">{isRegistering ? '註冊後即可登入管理預約資料。' : '登入後即可查看與管理預約資料。'}</p>
+          <h1 className="text-2xl font-bold">管理者登入</h1>
+          <p className="text-gray-600 mt-2">請使用已建立的管理者會員登入。</p>
         </div>
 
         <form onSubmit={handleSubmit} className="space-y-5">
@@ -184,17 +184,6 @@ export default function AdminLogin({ onLogin }) {
           </button>
         )}
 
-        <button
-          type="button"
-          className="w-full mt-4 text-primary hover:text-accent"
-          onClick={() => {
-            setIsRegistering(!isRegistering)
-            setError('')
-            setNotice('')
-          }}
-        >
-          {isRegistering ? '已有帳號？返回登入' : '建立新的管理者會員'}
-        </button>
       </section>
     </main>
   )

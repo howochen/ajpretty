@@ -38,6 +38,10 @@ CREATE TABLE teachers (
   tenant_id UUID NOT NULL REFERENCES tenants(id) ON DELETE CASCADE,
   name VARCHAR(255) NOT NULL,
   level VARCHAR(100),
+  description TEXT,
+  experience TEXT,
+  avatar_url TEXT,
+  password VARCHAR(255) NOT NULL DEFAULT '123',
   extra_fee DECIMAL(10,2) DEFAULT 0,
   is_active BOOLEAN DEFAULT true,
   created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
@@ -67,12 +71,13 @@ CREATE TABLE bookings (
 CREATE TABLE availability (
   id UUID DEFAULT uuid_generate_v4() PRIMARY KEY,
   tenant_id UUID NOT NULL REFERENCES tenants(id) ON DELETE CASCADE,
+  teacher_id UUID NOT NULL REFERENCES teachers(id) ON DELETE CASCADE,
   date DATE NOT NULL,
   time VARCHAR(5) NOT NULL, -- HH:MM format
   is_available BOOLEAN DEFAULT true,
   created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
   updated_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
-  UNIQUE(tenant_id, date, time)
+  UNIQUE(tenant_id, teacher_id, date, time)
 );
 
 -- Create indexes for better performance
@@ -82,6 +87,7 @@ CREATE INDEX idx_bookings_tenant_id ON bookings(tenant_id);
 CREATE INDEX idx_bookings_user_phone ON bookings(user_phone);
 CREATE INDEX idx_bookings_date_time ON bookings(booking_date, booking_time);
 CREATE INDEX idx_availability_tenant_date ON availability(tenant_id, date);
+CREATE INDEX idx_availability_teacher_date ON availability(teacher_id, date);
 
 -- Enable Row Level Security
 ALTER TABLE tenants ENABLE ROW LEVEL SECURITY;
