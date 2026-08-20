@@ -8,6 +8,35 @@ export const toLocalDateStr = (date) => {
   return `${y}-${m}-${day}`
 }
 
+const toSocialUrl = (value, service) => {
+  const input = value?.trim()
+  if (!input) return service === 'instagram' ? 'https://instagram.com' : 'https://line.me'
+  if (/^https?:\/\//i.test(input)) return input
+  const account = input.replace(/^@/, '')
+  return service === 'instagram'
+    ? `https://instagram.com/${account}`
+    : `https://line.me/ti/p/~${account}`
+}
+
+export const getTenantSocialLinks = async () => {
+  try {
+    const { data, error } = await supabase
+      .from('tenants')
+      .select('instagram_id, line_id')
+      .eq('subdomain', currentTenantSubdomain)
+      .maybeSingle()
+
+    if (error) throw error
+    return {
+      instagram: toSocialUrl(data?.instagram_id, 'instagram'),
+      line: toSocialUrl(data?.line_id, 'line')
+    }
+  } catch (error) {
+    console.error('Error getting tenant social links:', error)
+    return { instagram: 'https://instagram.com', line: 'https://line.me' }
+  }
+}
+
 // Get all bookings for current tenant
 export const getBookings = async () => {
   try {

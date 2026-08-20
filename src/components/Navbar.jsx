@@ -1,10 +1,16 @@
 import { Link, useNavigate } from 'react-router-dom'
 import { Menu, X } from 'lucide-react'
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
+import { getTenantSocialLinks } from '../utils/storage'
 
 export default function Navbar({ isAdmin, onLogout }) {
   const [isOpen, setIsOpen] = useState(false)
+  const [socialLinks, setSocialLinks] = useState({ instagram: 'https://instagram.com', line: 'https://line.me' })
   const navigate = useNavigate()
+
+  useEffect(() => {
+    getTenantSocialLinks().then(setSocialLinks)
+  }, [])
 
   const handleLogout = () => {
     onLogout()
@@ -48,7 +54,7 @@ export default function Navbar({ isAdmin, onLogout }) {
 
           <div className="hidden md:flex space-x-4">
             <a
-              href="https://instagram.com"
+              href={socialLinks.instagram}
               target="_blank"
               rel="noopener noreferrer"
               className="text-gray-700 hover:text-primary transition-colors"
@@ -56,7 +62,7 @@ export default function Navbar({ isAdmin, onLogout }) {
               Instagram
             </a>
             <a
-              href="https://line.me"
+              href={socialLinks.line}
               target="_blank"
               rel="noopener noreferrer"
               className="text-gray-700 hover:text-primary transition-colors"
@@ -106,10 +112,10 @@ export default function Navbar({ isAdmin, onLogout }) {
               設定
             </Link>
             <div className="pt-3 border-t space-y-2">
-              <a href="https://instagram.com" target="_blank" rel="noopener noreferrer" className="block text-gray-700 hover:text-primary">
+              <a href={socialLinks.instagram} target="_blank" rel="noopener noreferrer" className="block text-gray-700 hover:text-primary">
                 Instagram
               </a>
-              <a href="https://line.me" target="_blank" rel="noopener noreferrer" className="block text-gray-700 hover:text-primary">
+              <a href={socialLinks.line} target="_blank" rel="noopener noreferrer" className="block text-gray-700 hover:text-primary">
                 LINE
               </a>
               {isAdmin && (

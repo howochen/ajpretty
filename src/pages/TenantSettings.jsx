@@ -555,23 +555,23 @@ export default function TenantSettings() {
             </h2>
             <div className="space-y-4">
               <div>
-                <label className="block text-sm font-medium mb-2">LINE ID</label>
+                <label className="block text-sm font-medium mb-2">LINE 連結或 ID</label>
                 <input
                   type="text"
                   value={tenantData.line_id}
                   onChange={(e) => handleInputChange('line_id', e.target.value)}
                   className="input-field"
-                  placeholder="LINE ID"
+                  placeholder="例如：your-line-id 或完整連結"
                 />
               </div>
               <div>
-                <label className="block text-sm font-medium mb-2">Instagram ID</label>
+                <label className="block text-sm font-medium mb-2">Instagram 連結或 ID</label>
                 <input
                   type="text"
                   value={tenantData.instagram_id}
                   onChange={(e) => handleInputChange('instagram_id', e.target.value)}
                   className="input-field"
-                  placeholder="instagram_id"
+                  placeholder="例如：your-account 或完整連結"
                 />
               </div>
             </div>
